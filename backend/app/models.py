@@ -1,0 +1,116 @@
+"""
+数据库模型定义
+V2 改进：
+  - Source 新增 original_text 字段（保存原文）
+  - Block 新增 is_suspended 字段（暂停复习）
+  - datetime.utcnow() → datetime.now(timezone.utc)
+V3 新增：
+  - Deck 模型（树形学科仓库）
+  - Source 新增 deck_id 外键
+"""
+
+from datetime import datetime, timezone
+from typing import Optional
+
+from sqlmodel import SQLModel, Field, Relationship, Column, JSON
+
+
+class Deck(SQLModel, table=True):
+    """学科仓库表：树形结构，支持任意深度嵌套"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # 当前节点显示名（如 "Grammar"）
+    name: str = Field(index=True)
+
+    # 完整路径（如 "English/Grammar"），唯一索引
+    path: str = Field(unique=True, index=True)
+
+    # 父节点（可选，根节点为 None）
+    parent_id: Optional[int] = Field(default=None, foreign_key="deck.id")
+
+    # AI 拆解规则，JSON 格式
+    parser_config: dict = Field(default_factory=lambda: {
+        "strategy": "sentence_en_zh",
+        "source_lang": "English",
+        "target_lang": "Chinese",
+        "custom_prompt": None,
+    }, sa_column=Column(JSON))
+
+    # 卡片顺序策略
+    card_order: str = Field(default="sequential_then_random")
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+    # 关系
+    sources: list["Source"] = Relationship(back_populates="deck")
+
+
+class Source(SQLModel, table=True):
+    """来源表：存储原始学习材料"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(index=True)
+
+    # 去重：存原文的 MD5 哈希
+    content_hash: str = Field(unique=True, index=True)
+
+    # [V2新增] 保存原文，支持重新拆解和未来 RAG
+    original_text: str = Field(default="")
+
+    # 来源类型：text / url / file
+    source_type: str = Field(default="text")
+    url: Optional[str] = Field(default=None)
+
+    # [V3新增] 所属 Deck
+    deck_id: Optional[int] = Field(default=None, foreign_key="deck.id", index=True)
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+    # 关系：一个 Source 对应多个 Block
+    blocks: list["Block"] = Relationship(
+        back_populates="source",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+    # 关系：所属 Deck
+    deck: Optional[Deck] = Relationship(back_populates="sources")
+
+
+class Block(SQLModel, table=True):
+    """复习卡片表：最小复习单元，包含 SM-2 调度状态"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # 外键
+    source_id: int = Field(foreign_key="source.id", index=True)
+
+    # 排序序号（用于上下文回溯）
+    sequence_number: int
+
+    # 内容
+    content: str  # 英文原文 (Answer)
+    quiz: str  # 中文提示 (Question)
+
+    # --- SM-2 调度字段 ---
+    reps: int = Field(default=0)
+    interval: int = Field(default=0)
+    ease_factor: float = Field(default=2.5)
+    first_reviewed_at: Optional[datetime] = Field(default=None)
+    last_review: Optional[datetime] = Field(default=None)
+    next_review: Optional[datetime] = Field(default=None, index=True)
+
+    # [V2新增] 暂停复习（保留卡片但不出现在复习队列中）
+    is_suspended: bool = Field(default=False)
+
+    # 交互式笔记/子卡片 (JSON格式存储)
+    notes: Optional[list[dict]] = Field(
+        default=None, sa_column=Column(JSON)
+    )
+
+    # 关系
+    source: Source = Relationship(back_populates="blocks")
