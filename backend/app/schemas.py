@@ -5,7 +5,7 @@ V3 新增：Deck 相关 schema
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,12 +25,12 @@ class SourceImportRequest(BaseModel):
 
 class ReviewRequest(BaseModel):
     """复习打分的请求体"""
-    quality: int = Field(..., ge=1, le=5, description="评分: 1=忘, 3=难, 4=良, 5=易")
+    quality: Literal[1, 3, 4, 5] = Field(..., description="评分: 1=忘, 3=难, 4=良, 5=易")
 
 class BatchReviewRequest(BaseModel):
     """文章级批量复习打分的请求体"""
     block_ids: list[int] = Field(..., description="这批卡片的 ID 列表")
-    overall_quality: int = Field(..., ge=1, le=5, description="综合评分: 1=忘, 3=难, 4=良, 5=易")
+    overall_quality: Literal[1, 3, 4, 5] = Field(..., description="综合评分: 1=忘, 3=难, 4=良, 5=易")
 
 
 class BlockUpdateRequest(BaseModel):

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchStats, fetchSources, fetchReviewHistory, type Stats, type SourceListItem, type ReviewHistoryDay } from '../api'
+import { fetchSources, fetchReviewHistory, type SourceListItem, type ReviewHistoryDay } from '../api'
 import { useDeckStore } from '../stores/deck'
+import { useStatsStore } from '../stores/stats'
 
 const deckStore = useDeckStore()
-const stats   = ref<Stats | null>(null)
+const statsStore = useStatsStore()
 const sources = ref<SourceListItem[]>([])
 const history = ref<ReviewHistoryDay[]>([])
 const loading = ref(false)
@@ -17,11 +18,11 @@ async function load() {
   loading.value = true
   error.value   = ''
   try {
-    ;[stats.value, sources.value, history.value] = await Promise.all([
-      fetchStats(deckStore.selectedDeckId),
+    ;[sources.value, history.value] = await Promise.all([
       fetchSources(),
       fetchReviewHistory(90, deckStore.selectedDeckId),
     ])
+    await statsStore.load()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -145,28 +146,28 @@ onMounted(load)
 
     <p v-else-if="error" class="text-sm mt-xl" style="color:#e57373">⚠️ {{ error }}</p>
 
-    <template v-else-if="stats">
+    <template v-else-if="statsStore.stats">
       <!-- Stat cards -->
       <div class="stat-grid">
         <div class="stat-card">
           <span class="stat-label">总卡片</span>
-          <span class="stat-value">{{ stats.total }}</span>
+          <span class="stat-value">{{ statsStore.stats.total }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">已掌握</span>
-          <span class="stat-value teal">{{ stats.mastered }}</span>
+          <span class="stat-value teal">{{ statsStore.stats.mastered }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">学习中</span>
-          <span class="stat-value accent">{{ stats.learning }}</span>
+          <span class="stat-value accent">{{ statsStore.stats.learning }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">新卡片</span>
-          <span class="stat-value">{{ stats.new }}</span>
+          <span class="stat-value">{{ statsStore.stats.new }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">今日到期</span>
-          <span class="stat-value warm">{{ stats.due_today }}</span>
+          <span class="stat-value warm">{{ statsStore.stats.due_today }}</span>
         </div>
       </div>
 
@@ -176,15 +177,15 @@ onMounted(load)
         <div class="progress-bar" style="height: 8px;">
           <div
             class="progress-bar-fill"
-            :style="{ width: stats.total > 0 ? (stats.mastered / stats.total * 100) + '%' : '0%' }"
+            :style="{ width: statsStore.stats.total > 0 ? (statsStore.stats.mastered / statsStore.stats.total * 100) + '%' : '0%' }"
           />
         </div>
         <div class="flex justify-between mt-lg">
           <span class="text-faint text-sm">0</span>
           <span class="text-violet text-sm">
-            {{ stats.total > 0 ? Math.round(stats.mastered / stats.total * 100) : 0 }}% 已掌握
+            {{ statsStore.stats.total > 0 ? Math.round(statsStore.stats.mastered / statsStore.stats.total * 100) : 0 }}% 已掌握
           </span>
-          <span class="text-faint text-sm">{{ stats.total }}</span>
+          <span class="text-faint text-sm">{{ statsStore.stats.total }}</span>
         </div>
       </div>
 

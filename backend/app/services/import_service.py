@@ -59,7 +59,7 @@ def import_text(
 
     # 创建 Source
     title = req.title if req.title else req.text[:20] + "..."
-    content_hash = hashlib.md5(req.text.encode()).hexdigest()
+    content_hash = hashlib.sha256(req.text.encode()).hexdigest()
 
     source = create_source(
         session=session,
@@ -135,7 +135,7 @@ def import_markdown(
             continue
 
         source_text = "\n".join(f"{c['quiz']} / {c['content']}" for c in cards)
-        content_hash = hashlib.md5(f"{deck_id}:{source_title}".encode()).hexdigest()
+        content_hash = hashlib.sha256(f"{deck_id}:{source_title}".encode()).hexdigest()
 
         source = create_source(
             session=session,

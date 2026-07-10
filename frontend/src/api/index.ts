@@ -6,8 +6,12 @@
 const BASE = '/api'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  // Only set Content-Type for non-FormData bodies; FormData needs browser-generated boundary
+  const headers: HeadersInit = options?.body instanceof FormData
+    ? { ...options?.headers }
+    : { 'Content-Type': 'application/json', ...options?.headers }
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers,
     ...options,
   })
   if (!res.ok) {
@@ -181,8 +185,6 @@ export function importMarkdownFile(file: File, deckId: number) {
   form.append('deck_id', String(deckId))
   return request<MarkdownImportResponse>('/sources/import-markdown', {
     method: 'POST',
-    // Don't set Content-Type — browser sets it with boundary for multipart
-    headers: {},
     body: form,
   })
 }

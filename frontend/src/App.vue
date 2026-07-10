@@ -1,21 +1,20 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { ref, computed, onMounted } from 'vue'
-import { fetchStats, type Stats } from './api'
+import { computed, onMounted, watch } from 'vue'
 import { useDeckStore } from './stores/deck'
+import { useStatsStore } from './stores/stats'
 
 const route = useRoute()
-const stats = ref<Stats | null>(null)
 const deckStore = useDeckStore()
+const statsStore = useStatsStore()
 
 onMounted(async () => {
   await deckStore.loadDecks()
-  try {
-    stats.value = await fetchStats(deckStore.selectedDeckId)
-  } catch {
-    // Backend may not be running yet; sidebar still renders
-  }
+  statsStore.load()
 })
+
+// Re-load stats when the selected Deck changes
+watch(() => deckStore.selectedDeckId, () => statsStore.load())
 
 const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeckId))
 </script>
@@ -119,10 +118,10 @@ const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeck
       </RouterLink>
     </nav>
 
-    <div class="sidebar-footer" v-if="stats">
+    <div class="sidebar-footer" v-if="statsStore.stats">
       <div class="sidebar-stats-mini">
-        <div>总卡片 <strong style="color: var(--color-surface-violet)">{{ stats.total }}</strong></div>
-        <div>今日到期 <strong style="color: var(--color-surface-violet)">{{ stats.due_today }}</strong></div>
+        <div>总卡片 <strong style="color: var(--color-surface-violet)">{{ statsStore.stats.total }}</strong></div>
+        <div>今日到期 <strong style="color: var(--color-surface-violet)">{{ statsStore.stats.due_today }}</strong></div>
       </div>
     </div>
   </aside>

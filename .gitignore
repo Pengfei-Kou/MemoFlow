@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# 环境变量（含真实 LLM Key，绝不入库；模板见 backend/.env.example）
+.env
+
+# 数据库（有状态数据，部署时与仓库分离）
+*.db
+
+# macOS 元数据
+.DS_Store
+._*
+
+# IDE
+.idea/

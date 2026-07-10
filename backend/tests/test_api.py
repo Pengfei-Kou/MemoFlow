@@ -241,3 +241,13 @@ class TestStatsAPI:
         resp = c.get("/api/stats/history?days=7")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+
+
+class TestHealthAPI:
+    """Tests for /api/health endpoint."""
+
+    def test_health(self, client):
+        c, _ = client
+        resp = c.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "running"

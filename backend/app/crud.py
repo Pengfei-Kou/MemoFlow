@@ -48,8 +48,9 @@ def create_deck(
     parent_id = None
     if parent_path:
         parent = session.exec(select(Deck).where(Deck.path == parent_path)).first()
-        if parent:
-            parent_id = parent.id
+        if not parent:
+            raise ValueError(f"父节点 '{parent_path}' 不存在，请先创建父 Deck")
+        parent_id = parent.id
 
     deck = Deck(
         name=name,

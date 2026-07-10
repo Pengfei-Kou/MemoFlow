@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
+    # HTTP Basic Auth（两项都设置时启用；本地开发留空即关闭）
+    auth_username: str = ""
+    auth_password: str = ""
+
+    # 前端构建产物目录（生产容器内为 /app/static；留空则不托管前端）
+    static_dir: str = ""
+
     # SM-2 参数
     mastered_threshold: int = 21  # interval >= 21 天算"已掌握"
     new_cards_per_session: int = 20  # 每次新卡片上限
