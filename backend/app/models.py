@@ -96,10 +96,16 @@ class Block(SQLModel, table=True):
     content: str  # 英文原文 (Answer)
     quiz: str  # 中文提示 (Question)
 
-    # --- SM-2 调度字段 ---
+    # --- 调度字段（interval/reps 两种算法共用；ease_factor 仅 SM-2）---
     reps: int = Field(default=0)
     interval: int = Field(default=0)
     ease_factor: float = Field(default=2.5)
+
+    # --- FSRS 调度字段（scheduler_algorithm="fsrs" 时使用；旧 SM-2 卡片首次复习时接种）---
+    stability: Optional[float] = Field(default=None)
+    difficulty: Optional[float] = Field(default=None)
+    fsrs_state: Optional[int] = Field(default=None)  # 1=Learning 2=Review 3=Relearning
+    fsrs_step: Optional[int] = Field(default=None)  # 学习阶段的步数索引
     first_reviewed_at: Optional[datetime] = Field(default=None)
     last_review: Optional[datetime] = Field(default=None)
     next_review: Optional[datetime] = Field(default=None, index=True)
@@ -114,3 +120,21 @@ class Block(SQLModel, table=True):
 
     # 关系
     source: Source = Relationship(back_populates="blocks")
+
+
+class ReviewLog(SQLModel, table=True):
+    """
+    复习日志：追加式，永不更新/删除（卡片删除后日志保留，Anki revlog 同款语义）。
+    用途：真实热力图 / 遗忘率统计 / 未来 FSRS 参数个性化优化的训练数据。
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    block_id: int = Field(index=True)  # 不设 FK：日志比卡片长寿
+    quality: Optional[int] = Field(default=None)  # 1/3/4/5；None=历史回填（评分未知）
+    reviewed_at: datetime = Field(
+        index=True, default_factory=lambda: datetime.now(timezone.utc)
+    )
+    interval_before: int = Field(default=0)
+    interval_after: int = Field(default=0)
+    stability_after: Optional[float] = Field(default=None)
+    difficulty_after: Optional[float] = Field(default=None)

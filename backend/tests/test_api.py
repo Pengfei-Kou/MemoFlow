@@ -134,7 +134,7 @@ class TestReviewAPI:
         assert data["is_new"] is True
 
     def test_submit_review(self, client):
-        """Submit a review and check interval updates."""
+        """Submit a review and check schedule updates + review log append."""
         c, engine = client
         _seed_data(engine)
 
@@ -142,12 +142,22 @@ class TestReviewAPI:
         next_resp = c.get("/api/review/next")
         block_id = next_resp.json()["block"]["id"]
 
-        # Submit review with quality=5
+        # Submit review with quality=5 (Easy)
         resp = c.post(f"/api/review/{block_id}", json={"quality": 5})
         assert resp.status_code == 200
         data = resp.json()
-        assert data["new_interval"] == 1  # first review → interval 1
-        assert "next_review" in data
+        assert data["new_interval"] >= 0  # 具体间隔由调度算法（FSRS/SM-2）决定
+        assert data["next_review"] is not None
+
+        # 追加式复习日志应落表
+        from sqlmodel import select
+        from app.models import ReviewLog
+        with Session(engine) as session:
+            logs = session.exec(
+                select(ReviewLog).where(ReviewLog.block_id == block_id)
+            ).all()
+        assert len(logs) == 1
+        assert logs[0].quality == 5
 
     def test_submit_review_nonexistent(self, client):
         c, _ = client

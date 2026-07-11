@@ -24,6 +24,20 @@ const ratings = [
   { quality: 4, label: '良', shortcut: '3' },
   { quality: 5, label: '简单', shortcut: '4' },
 ] as const
+
+/** 浏览器原生 TTS 朗读英文句子（iOS Safari 需要用户手势触发，点击即满足） */
+function speak(text: string) {
+  if (!('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const utter = new SpeechSynthesisUtterance(text)
+  utter.lang = 'en-US'
+  const voice = window.speechSynthesis
+    .getVoices()
+    .find((v) => v.lang.startsWith('en-US'))
+  if (voice) utter.voice = voice
+  utter.rate = 0.95
+  window.speechSynthesis.speak(utter)
+}
 </script>
 
 <template>
@@ -59,7 +73,10 @@ const ratings = [
         <div class="divider" style="margin: var(--space-xl) 0;"></div>
 
         <p class="review-card-label text-xs text-faint">答案</p>
-        <p class="review-answer">{{ card.content }}</p>
+        <div class="review-answer-row">
+          <p class="review-answer">{{ card.content }}</p>
+          <button class="btn-speak" @click.stop="speak(card.content)" title="朗读句子">🔊</button>
+        </div>
 
         <!-- Notes Section -->
         <div v-if="card.notes && card.notes.length > 0" class="review-notes-section">
@@ -68,7 +85,7 @@ const ratings = [
           <ul class="review-notes-list">
             <li v-for="(note, idx) in card.notes" :key="idx" class="review-note-item">
               <span class="note-zh">{{ note.zh }}</span>
-              <span class="note-en-mask">{{ note.en }}</span>
+              <span class="note-en-row"><span class="note-en-mask">{{ note.en }}</span><button class="btn-speak btn-speak-sm" @click.stop="speak(note.en)" title="朗读">🔊</button></span>
             </li>
           </ul>
         </div>
@@ -147,12 +164,46 @@ const ratings = [
   font-size: var(--text-body-lg);
 }
 
+.review-answer-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+}
+
 .review-answer {
   font-size: var(--text-display-md);
   font-weight: 540;
   line-height: 1.6;
   color: #ffffff;
   letter-spacing: -0.135px;
+}
+
+.btn-speak {
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-surface);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: var(--text-body-md);
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.btn-speak:hover {
+  opacity: 1;
+  border-color: var(--color-surface-violet);
+}
+.btn-speak-sm {
+  font-size: var(--text-xs);
+  padding: 0 6px;
+  margin-left: var(--space-sm);
+  vertical-align: middle;
+}
+.note-en-row {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
 }
 
 /* ─── Notes ────────────────────────────────────────────── */

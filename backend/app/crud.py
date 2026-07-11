@@ -14,9 +14,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select, func, col
 
-from app.models import Source, Block, Deck
+from app.models import Source, Block, Deck, ReviewLog
 from app.config import settings
+from app.services import fsrs_scheduler
 from app.services.scheduler import calculate_sm2, get_next_review_date
+from app.services.timeutils import local_day_bounds, logical_date
 
 
 # ============================================================
@@ -351,10 +353,10 @@ def get_due_blocks(
     if limit is None:
         limit = settings.review_cards_per_session
 
-    tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+    _, day_end = local_day_bounds()
     statement = (
         select(Block)
-        .where(Block.next_review < str(tomorrow))
+        .where(Block.next_review < day_end)
         .where(Block.is_suspended == False)
     )
 
@@ -405,10 +407,10 @@ def get_due_source_batch(
     source_ids: list[int] | None = None,
 ) -> list[Block]:
     """获取下一个需要复习的整个 Source 的所有卡片 (Passage-level review)"""
-    tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
-    
+    _, day_end = local_day_bounds()
+
     # 1. 找出一个有卡片到期的 source_id
-    subquery = select(Block.source_id).where(Block.next_review < str(tomorrow)).where(Block.is_suspended == False)
+    subquery = select(Block.source_id).where(Block.next_review < day_end).where(Block.is_suspended == False)
     if source_ids is not None:
         subquery = subquery.where(col(Block.source_id).in_(source_ids))
     subquery = subquery.order_by(Block.source_id).limit(1)
@@ -454,13 +456,13 @@ def count_due_blocks(
     count_by_source: bool = False,
 ) -> int:
     """高效统计今日到期卡片数（或到期的 Source 组数）"""
-    tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
-    
+    _, day_end = local_day_bounds()
+
     count_expr = func.count(func.distinct(Block.source_id)) if count_by_source else func.count()
     stmt = (
         select(count_expr)
         .select_from(Block)
-        .where(Block.next_review < str(tomorrow))
+        .where(Block.next_review < day_end)
         .where(Block.is_suspended == False)
     )
     if source_ids is not None:
@@ -490,11 +492,9 @@ def count_today_reviewed(session: Session, source_ids: list[int] | None = None, 
     """统计今日已复习数量（或 Source 组数）
     
     "已复习" = last_review 在今天 且 first_reviewed_at 在今天之前
-    使用 datetime 边界而非 date 字符串比较，避免类型不匹配
+    "今天" = 本地逻辑日（时区 + 凌晨滚动，见 timeutils）
     """
-    today_start = datetime.combine(
-        datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc
-    )
+    today_start, _ = local_day_bounds()
     count_expr = func.count(func.distinct(Block.source_id)) if count_by_source else func.count()
     stmt = (
         select(count_expr)
@@ -510,12 +510,9 @@ def count_today_reviewed(session: Session, source_ids: list[int] | None = None, 
 def count_today_new(session: Session, source_ids: list[int] | None = None, count_by_source: bool = False) -> int:
     """统计今日已学的新卡数量（或 Source 组数）
     
-    "今日新学" = first_reviewed_at 在今天
-    使用 datetime 边界而非 date 字符串比较，避免类型不匹配
+    "今日新学" = first_reviewed_at 在今天（本地逻辑日，见 timeutils）
     """
-    today_start = datetime.combine(
-        datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc
-    )
+    today_start, _ = local_day_bounds()
     count_expr = func.count(func.distinct(Block.source_id)) if count_by_source else func.count()
     stmt = (
         select(count_expr)
@@ -527,47 +524,71 @@ def count_today_new(session: Session, source_ids: list[int] | None = None, count
     return session.exec(stmt).one()
 
 
-def submit_review(session: Session, block_id: int, quality: int) -> Block | None:
-    """
-    处理复习打分：
-    1. 调用 SM-2 算法
-    2. 更新卡片状态
-    3. 计算下次复习日期
-    """
-    block = session.get(Block, block_id)
-    if not block:
-        return None
+def _apply_rating(block: Block, quality: int, now: datetime) -> None:
+    """按配置的调度算法更新 block 的调度字段（不改 last_review，不落库）"""
+    if settings.scheduler_algorithm == "fsrs":
+        fsrs_scheduler.apply_review(block, quality, now)
+        return
 
+    # SM-2 回退路径
     result = calculate_sm2(
         quality=quality,
         previous_interval=block.interval,
         previous_ease_factor=block.ease_factor,
         previous_reps=block.reps,
     )
-
     block.interval = result["interval"]
     block.ease_factor = result["ease_factor"]
     block.reps = result["reps"]
-    
-    now = datetime.now(timezone.utc)
-    block.last_review = now
-    if block.first_reviewed_at is None:
-        block.first_reviewed_at = now
-
     next_date = get_next_review_date(result["interval"])
     block.next_review = datetime(
         next_date.year, next_date.month, next_date.day, tzinfo=timezone.utc
     )
 
+
+def _log_review(session: Session, block: Block, quality: int, now: datetime, interval_before: int) -> None:
+    """追加一条复习日志（永不更新/删除）"""
+    session.add(ReviewLog(
+        block_id=block.id,
+        quality=quality,
+        reviewed_at=now,
+        interval_before=interval_before,
+        interval_after=block.interval,
+        stability_after=block.stability,
+        difficulty_after=block.difficulty,
+    ))
+
+
+def submit_review(session: Session, block_id: int, quality: int) -> Block | None:
+    """
+    处理复习打分：
+    1. 调用调度算法（FSRS / SM-2）更新卡片状态与下次复习时间
+    2. 追加复习日志
+    """
+    block = session.get(Block, block_id)
+    if not block:
+        return None
+
+    now = datetime.now(timezone.utc)
+    interval_before = block.interval
+
+    _apply_rating(block, quality, now)
+
+    block.last_review = now
+    if block.first_reviewed_at is None:
+        block.first_reviewed_at = now
+
+    _log_review(session, block, quality, now, interval_before)
     session.add(block)
     session.flush()
     return block
 
 def submit_batch_review(session: Session, block_ids: list[int], quality: int) -> dict:
     """
-    处理批量（Passage级别）复习打分：
-    1. 计算统一的 SM-2 周期
-    2. 将包含的所有 block 同步到相同的 next_review 日期
+    处理批量（Passage级别）复习打分：整篇一个评分，逐卡更新调度状态并记日志。
+
+    FSRS 路径下每张卡保留自己真实的 stability/difficulty（fuzzing 已关闭，
+    同评分历史的卡片到期日自然聚在一起）；整篇下次出现时机 = 最早到期的卡。
     """
     if not block_ids:
         return {}
@@ -576,41 +597,24 @@ def submit_batch_review(session: Session, block_ids: list[int], quality: int) ->
     if not blocks:
         return {}
 
-    # 以这批卡片中最大的 interval 和最难的 ease_factor 为基准
-    base_interval = max(b.interval for b in blocks)
-    # 计算平均 ease_factor
-    base_ease = sum(b.ease_factor for b in blocks) / len(blocks)
-    base_reps = max(b.reps for b in blocks)
-
-    result = calculate_sm2(
-        quality=quality,
-        previous_interval=base_interval,
-        previous_ease_factor=base_ease,
-        previous_reps=base_reps,
-    )
-
     now = datetime.now(timezone.utc)
-    next_date = get_next_review_date(result["interval"])
-    next_review_dt = datetime(
-        next_date.year, next_date.month, next_date.day, tzinfo=timezone.utc
-    )
 
     for block in blocks:
-        block.interval = result["interval"]
-        block.ease_factor = result["ease_factor"]
-        block.reps = result["reps"]
+        interval_before = block.interval
+        _apply_rating(block, quality, now)
         block.last_review = now
         if block.first_reviewed_at is None:
             block.first_reviewed_at = now
-        block.next_review = next_review_dt
+        _log_review(session, block, quality, now, interval_before)
         session.add(block)
 
     session.flush()
-    
+
+    next_review_dt = min(b.next_review for b in blocks)
     return {
         "updated_count": len(blocks),
-        "new_interval": result["interval"],
-        "new_ease_factor": result["ease_factor"],
+        "new_interval": max(b.interval for b in blocks),
+        "new_ease_factor": round(sum(b.ease_factor for b in blocks) / len(blocks), 2),
         "next_review": next_review_dt
     }
 
@@ -647,11 +651,11 @@ def get_stats(session: Session, source_ids: list[int] | None = None) -> dict:
         )
     ).one()
 
-    tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+    _, day_end = local_day_bounds()
     due_today = session.exec(
         filtered(
             select(func.count()).select_from(Block).where(
-                Block.next_review < str(tomorrow)
+                Block.next_review < day_end
             )
         )
     ).one()
@@ -673,37 +677,34 @@ def get_review_history(
     source_ids: list[int] | None = None,
 ) -> list[dict]:
     """
-    统计过去 N 天每天的复习次数（基于 last_review 字段聚合）。
+    统计过去 N 天每天的复习次数（基于 ReviewLog 聚合，按本地逻辑日分组）。
     返回：[{"date": "2025-05-30", "count": 12}, ...]，按日期升序。
+
+    注：ReviewLog 追加式保留全部历史（含已删卡片的），复习一次记一次，
+    不再像旧实现那样被 last_review 覆盖改写。
     """
-
-
-    today = datetime.now(timezone.utc).date()
+    today = logical_date()
     start_date = today - timedelta(days=days - 1)
+    # 起点放宽一天，避免 UTC/本地时差漏掉边界记录，Python 侧再精确过滤
+    range_start = datetime(start_date.year, start_date.month, start_date.day) - timedelta(days=1)
 
-    # 用 strftime 在 SQLite 中按日期分组聚合
-    stmt = (
-        select(
-            func.strftime("%Y-%m-%d", Block.last_review).label("date"),
-            func.count().label("count"),
-        )
-        .where(Block.last_review != None)  # noqa: E711
-        .where(Block.last_review >= str(start_date))
-        .group_by(func.strftime("%Y-%m-%d", Block.last_review))
-        .order_by(func.strftime("%Y-%m-%d", Block.last_review))
-    )
-
+    stmt = select(ReviewLog.reviewed_at).where(ReviewLog.reviewed_at >= range_start)
     if source_ids is not None:
-        stmt = stmt.where(col(Block.source_id).in_(source_ids))
+        stmt = (
+            select(ReviewLog.reviewed_at)
+            .join(Block, ReviewLog.block_id == Block.id)
+            .where(ReviewLog.reviewed_at >= range_start)
+            .where(col(Block.source_id).in_(source_ids))
+        )
 
-    rows = session.exec(stmt).all()
+    date_map: dict[str, int] = {}
+    for reviewed_at in session.exec(stmt).all():
+        d_str = logical_date(reviewed_at).strftime("%Y-%m-%d")
+        date_map[d_str] = date_map.get(d_str, 0) + 1
 
-    # 构建完整日期序列（没有复习的天数填 0）
-    date_map: dict[str, int] = {row[0]: row[1] for row in rows}
     result = []
     for i in range(days):
-        d = start_date + timedelta(days=i)
-        d_str = d.strftime("%Y-%m-%d")
+        d_str = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
         result.append({"date": d_str, "count": date_map.get(d_str, 0)})
 
     return result

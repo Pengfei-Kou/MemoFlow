@@ -10,6 +10,8 @@
 Router 层只做：参数校验 → 调用 Service → 返回响应
 """
 
+from datetime import datetime, timezone
+
 from sqlmodel import Session
 
 from app.config import settings
@@ -143,6 +145,19 @@ def get_next_review(
     return ReviewNextResponse(block=None, remaining=0, is_new=False)
 
 
+def _humanize_next_review(next_review) -> str:
+    """下次复习时间 → 人话（FSRS 学习步可能是分钟级，不再一律是"N 天"）"""
+    now = datetime.now(timezone.utc)
+    due = next_review.replace(tzinfo=timezone.utc) if next_review.tzinfo is None else next_review
+    delta = due - now
+    minutes = delta.total_seconds() / 60
+    if minutes < 90:
+        return f"{max(1, round(minutes))} 分钟后"
+    if minutes < 60 * 36:
+        return f"{round(minutes / 60)} 小时后"
+    return f"{delta.days} 天后"
+
+
 def submit_single_review(session: Session, block_id: int, quality: int) -> ReviewSubmitResponse | None:
     """提交单卡复习打分，返回响应对象；不存在返回 None。"""
     block = crud_submit_review(session, block_id, quality)
@@ -158,7 +173,7 @@ def submit_single_review(session: Session, block_id: int, quality: int) -> Revie
         new_interval=block.interval,
         new_ease_factor=block.ease_factor,
         next_review=block.next_review,
-        message=f"评分「{label}」→ 下次复习间隔 {block.interval} 天",
+        message=f"评分「{label}」→ 下次复习 {_humanize_next_review(block.next_review)}",
     )
 
 
@@ -180,5 +195,5 @@ def submit_passage_review(
         new_interval=result["new_interval"],
         new_ease_factor=result["new_ease_factor"],
         next_review=result["next_review"],
-        message=f"综合判定「{label}」→ 下次复习间隔 {result['new_interval']} 天",
+        message=f"综合判定「{label}」→ 下次复习 {_humanize_next_review(result['next_review'])}",
     )

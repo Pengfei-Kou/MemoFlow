@@ -40,10 +40,18 @@ class Settings(BaseSettings):
     # 前端构建产物目录（生产容器内为 /app/static；留空则不托管前端）
     static_dir: str = ""
 
-    # SM-2 参数
+    # 调度参数
     mastered_threshold: int = 21  # interval >= 21 天算"已掌握"
     new_cards_per_session: int = 20  # 每次新卡片上限
     review_cards_per_session: int = 200  # 每次复习卡片上限
+
+    # 调度算法：fsrs（默认）/ sm2（回退开关，出问题时切回）
+    scheduler_algorithm: str = "fsrs"
+    desired_retention: float = 0.9  # FSRS 目标记忆保持率
+
+    # "逻辑日"判定：本地时区 + 凌晨滚动（存储仍一律 UTC，见 services/timeutils.py）
+    timezone: str = "America/Toronto"
+    day_rollover_hour: int = 4
 
 
 # 单例
