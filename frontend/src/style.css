@@ -497,40 +497,28 @@ body {
 /* --- Responsive visibility helpers --- */
 .mobile-only { display: none; }
 
-/* --- Responsive --- */
+/* --- Responsive：移动端去侧栏，改底部 Tab 导航（MobileTabBar）--- */
 @media (max-width: 768px) {
   :root {
-    --sidebar-width: 60px;
+    --sidebar-width: 0px;
+    --mobile-nav-h: 56px;
   }
 
   .mobile-only { display: block; }
   .desktop-only { display: none; }
 
-  .sidebar-logo-text,
-  .sidebar-nav-item span,
-  .sidebar-stats-mini,
-  .sidebar-deck-selector { /* 60px 图标栏放不下 select，由各页顶部 DeckScopeSelect 补位 */
-    display: none;
-  }
-
-  .sidebar-logo {
-    justify-content: center;
-    padding: 0 var(--space-md);
-  }
-
-  .sidebar-nav-item {
-    justify-content: center;
-    padding: var(--space-md);
-  }
-
-  /* PWA 全屏（viewport-fit=cover）下让出刘海/圆角安全区 */
   .sidebar {
-    padding-top: calc(var(--space-xl) + env(safe-area-inset-top));
-    padding-left: env(safe-area-inset-left);
+    display: none; /* 导航由底部 MobileTabBar 承担 */
+  }
+
+  .main-content {
+    margin-left: 0;
   }
 
   .page-container {
     padding: var(--space-xxl) var(--space-lg);
+    /* 顶部让出刘海安全区（PWA viewport-fit=cover）；底部让出 Tab 导航 */
     padding-top: calc(var(--space-xxl) + env(safe-area-inset-top));
+    padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom) + var(--space-xl));
   }
 }

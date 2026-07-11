@@ -3,6 +3,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { computed, onMounted, watch } from 'vue'
 import { useDeckStore } from './stores/deck'
 import { useStatsStore } from './stores/stats'
+import MobileTabBar from './components/MobileTabBar.vue'
 
 const route = useRoute()
 const deckStore = useDeckStore()
@@ -131,6 +132,8 @@ const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeck
       <RouterView :key="route.path" />
     </Transition>
   </main>
+
+  <MobileTabBar />
 </template>
 
 <style scoped>

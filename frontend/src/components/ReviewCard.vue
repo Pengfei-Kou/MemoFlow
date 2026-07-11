@@ -325,25 +325,31 @@ function toggleNote(idx: number) {
   transform: translateY(0);
 }
 
-/* ─── 移动端：操作区固定底栏（拇指热区 + PWA 安全区）────── */
+/* ─── 移动端：操作区固定底栏，叠在底部 Tab 导航之上 ────── */
 @media (max-width: 768px) {
   .review-card-actions,
   .review-ratings,
   .review-submitting {
     position: fixed;
-    bottom: 0;
-    left: var(--sidebar-width);
+    bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+    left: 0;
     right: 0;
+    width: auto; /* 覆盖基础规则的 width:100%，否则叠加 left 偏移会横向溢出 */
     margin: 0;
-    padding: var(--space-md) var(--space-lg) calc(var(--space-md) + env(safe-area-inset-bottom));
+    padding: var(--space-md) var(--space-lg);
     background-color: var(--color-primary-deep);
     border-top: 1px solid var(--color-hairline-dark);
     z-index: 90;
   }
 
+  .review-ratings {
+    gap: var(--space-sm);
+  }
+
   .review-rating-btn {
     min-height: 48px;
-    padding: 10px 8px;
+    padding: 10px 4px;
+    min-width: 0; /* 允许四键在窄屏均分收缩 */
   }
 
   .review-card-actions .btn-pill {
@@ -354,7 +360,14 @@ function toggleNote(idx: number) {
 
   /* 给固定底栏让位，避免卡片内容被盖住 */
   .review-card {
-    margin-bottom: 110px;
+    margin-bottom: 84px;
+  }
+}
+
+/* 触屏：键盘快捷键角标无意义 */
+@media (hover: none) {
+  .rating-shortcut {
+    display: none;
   }
 }
 </style>
