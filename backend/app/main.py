@@ -108,8 +108,12 @@ if _static_dir and _static_dir.is_dir():
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         candidate = (_static_dir / full_path).resolve()
         if full_path and candidate.is_file() and candidate.is_relative_to(_static_dir):
-            return FileResponse(candidate)
-        return FileResponse(_static_dir / "index.html")
+            # Vite 产物带内容散列，可永久缓存；其余（manifest/图标等）短缓存
+            if full_path.startswith("assets/"):
+                return FileResponse(candidate, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+            return FileResponse(candidate, headers={"Cache-Control": "public, max-age=3600"})
+        # index.html 必须每次校验，否则移动端/PWA 拿着旧壳加载不到新版
+        return FileResponse(_static_dir / "index.html", headers={"Cache-Control": "no-cache"})
 
 else:
 
