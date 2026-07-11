@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from app.config import settings
 from app.database import create_db_and_tables
-from app.routers import sources, blocks, review, stats, decks
+from app.routers import sources, blocks, review, stats, decks, auth
+from app.services.auth import SESSION_COOKIE, verify_session_token
 
 # 配置日志
 logging.basicConfig(
@@ -44,25 +45,38 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# HTTP Basic Auth：AUTH_USERNAME / AUTH_PASSWORD 都配置时启用（公网部署必开，见 CONTEXT.md 第 6 节）
+# 鉴权：AUTH_USERNAME / AUTH_PASSWORD 都配置时启用（公网部署必开，见 CONTEXT.md 第 6 节）
+# 两种凭据并行有效：登录页签发的会话 cookie（浏览器）/ HTTP Basic Auth（curl 脚本）。
+# 静态壳（SPA/资源）放行——登录页本身要能加载，页面数据都在 /api 后面。
 if settings.auth_username and settings.auth_password:
+    _PUBLIC_PATHS = {"/api/health", "/api/auth/login"}
+    _PROTECTED_PREFIXES = ("/api/", "/docs", "/openapi.json", "/redoc")
+
+    def _has_valid_basic(request: Request) -> bool:
+        header = request.headers.get("authorization", "")
+        if not header.startswith("Basic "):
+            return False
+        try:
+            user, _, pwd = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+        except Exception:
+            return False
+        return secrets.compare_digest(user, settings.auth_username) and secrets.compare_digest(
+            pwd, settings.auth_password
+        )
+
+    def _has_valid_session(request: Request) -> bool:
+        token = request.cookies.get(SESSION_COOKIE, "")
+        return bool(token) and verify_session_token(token)
 
     @app.middleware("http")
-    async def basic_auth(request: Request, call_next):
-        if request.url.path == "/api/health":  # 容器健康检查免鉴权
-            return await call_next(request)
-        header = request.headers.get("authorization", "")
-        ok = False
-        if header.startswith("Basic "):
-            try:
-                user, _, pwd = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-                ok = secrets.compare_digest(user, settings.auth_username) and secrets.compare_digest(
-                    pwd, settings.auth_password
-                )
-            except Exception:
-                ok = False
-        if not ok:
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="MemoFlow"'})
+    async def auth_gate(request: Request, call_next):
+        path = request.url.path
+        if path.startswith(_PROTECTED_PREFIXES) and path not in _PUBLIC_PATHS:
+            if not (_has_valid_session(request) or _has_valid_basic(request)):
+                # /api 的 401 不带 WWW-Authenticate：带了会触发浏览器原生弹窗，
+                # 抢走登录页；/docs 等浏览器直达页保留弹窗兜底
+                headers = None if path.startswith("/api/") else {"WWW-Authenticate": 'Basic realm="MemoFlow"'}
+                return Response(status_code=401, headers=headers)
         return await call_next(request)
 
 
@@ -80,6 +94,7 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(auth.router)
 app.include_router(decks.router)
 app.include_router(sources.router)
 app.include_router(blocks.router)

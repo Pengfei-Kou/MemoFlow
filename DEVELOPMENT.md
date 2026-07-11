@@ -145,6 +145,17 @@ MemoFlowV3/
 
 ## 4. API 接口
 
+### 鉴权 `/api/auth`
+| Method | Path | 说明 |
+|--------|------|------|
+| `POST` | `/api/auth/login` | 登录，签发会话 cookie（记住我=90 天）；免鉴权 |
+| `POST` | `/api/auth/logout` | 清除会话 cookie |
+| `GET` | `/api/auth/me` | 探测登录态 |
+
+> 中间件对 `/api/*`（除 login/health）要求「会话 cookie 或 Basic Auth」二选一；
+> 静态壳（SPA）放行以便登录页可加载；`/api` 的 401 不带 `WWW-Authenticate`（防浏览器原生弹窗）。
+> 会话签名密钥由账密派生：**轮换密码即全端登出**。
+
 ### 来源管理 `/api/sources`
 | Method | Path | 说明 |
 |--------|------|------|

@@ -3,13 +3,18 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { computed, onMounted, watch } from 'vue'
 import { useDeckStore } from './stores/deck'
 import { useStatsStore } from './stores/stats'
+import { logout } from './api'
 import MobileTabBar from './components/MobileTabBar.vue'
 
 const route = useRoute()
 const deckStore = useDeckStore()
 const statsStore = useStatsStore()
 
+// 登录页：无导航、不预载数据（未登录时预载只会撞 401）
+const isLoginPage = computed(() => route.path === '/login')
+
 onMounted(async () => {
+  if (window.location.pathname === '/login') return
   await deckStore.loadDecks()
   statsStore.load()
 })
@@ -18,10 +23,15 @@ onMounted(async () => {
 watch(() => deckStore.selectedDeckId, () => statsStore.load())
 
 const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeckId))
+
+async function handleLogout() {
+  try { await logout() } catch { /* cookie 已清即达目的 */ }
+  window.location.href = '/login'
+}
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" v-if="!isLoginPage">
     <div class="sidebar-logo">
       <svg class="sidebar-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--color-surface-violet)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M2 12l10-6 10 6-10 6Z" />
@@ -124,16 +134,17 @@ const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeck
         <div>总卡片 <strong style="color: var(--color-surface-violet)">{{ statsStore.stats.total }}</strong></div>
         <div>今日到期 <strong style="color: var(--color-surface-violet)">{{ statsStore.stats.due_today }}</strong></div>
       </div>
+      <button class="sidebar-logout" @click="handleLogout">退出登录</button>
     </div>
   </aside>
 
-  <main class="main-content">
+  <main class="main-content" :class="{ 'full-bleed': isLoginPage }">
     <Transition name="fade" mode="out-in">
       <RouterView :key="route.path" />
     </Transition>
   </main>
 
-  <MobileTabBar />
+  <MobileTabBar v-if="!isLoginPage" />
 </template>
 
 <style scoped>
@@ -178,5 +189,24 @@ const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeck
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sidebar-logout {
+  margin-top: var(--space-md);
+  background: transparent;
+  border: none;
+  color: var(--color-on-dark-faint);
+  font-size: var(--text-micro);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  transition: color 0.2s ease;
+}
+.sidebar-logout:hover {
+  color: #e57373;
+}
+
+.main-content.full-bleed {
+  margin-left: 0;
 }
 </style>

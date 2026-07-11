@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { fetchSources, fetchReviewHistory, type SourceListItem, type ReviewHistoryDay } from '../api'
 import { useDeckStore } from '../stores/deck'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
+import { logout } from '../api'
 import { useStatsStore } from '../stores/stats'
 
 const deckStore = useDeckStore()
@@ -131,6 +132,11 @@ const monthLabels = computed(() => {
 })
 
 onMounted(load)
+
+async function handleLogout() {
+  try { await logout() } catch { /* cookie 已清即达目的 */ }
+  window.location.href = '/login'
+}
 </script>
 
 <template>
@@ -277,6 +283,7 @@ onMounted(load)
         <p class="text-mute text-sm">该 Deck 范围内还没有内容 — 去导入页面开始吧 🚀</p>
       </div>
     </template>
+    <button class="stats-logout mobile-only" @click="handleLogout">退出登录</button>
   </div>
 </template>
 
@@ -406,5 +413,17 @@ onMounted(load)
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
+}
+
+.stats-logout {
+  margin-top: var(--space-xxl);
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-dark-mute);
+  font-size: var(--text-caption);
+  padding: 10px;
+  width: 100%;
+  cursor: pointer;
 }
 </style>

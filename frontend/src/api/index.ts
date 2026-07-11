@@ -15,10 +15,27 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   })
   if (!res.ok) {
+    // 会话过期/未登录 → 去登录页（登录接口自身的 401 除外，由登录页展示错误）
+    if (res.status === 401 && !path.startsWith('/auth/') && window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? `HTTP ${res.status}`)
   }
   return res.json() as Promise<T>
+}
+
+// ─── Auth ─────────────────────────────────────────────────
+
+export function login(username: string, password: string, remember: boolean) {
+  return request<{ message: string; remember_days: number }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, remember }),
+  })
+}
+
+export function logout() {
+  return request<{ message: string }>('/auth/logout', { method: 'POST' })
 }
 
 // ─── Types ────────────────────────────────────────────────

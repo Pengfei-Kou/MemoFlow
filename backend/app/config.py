@@ -33,9 +33,11 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # HTTP Basic Auth（两项都设置时启用；本地开发留空即关闭）
+    # 鉴权（两项都设置时启用；本地开发留空即关闭）
+    # 生效方式：登录页会话 cookie（默认 90 天）或 HTTP Basic Auth（脚本用）二选一
     auth_username: str = ""
     auth_password: str = ""
+    session_days: int = 90  # "记住我"会话有效期
 
     # 前端构建产物目录（生产容器内为 /app/static；留空则不托管前端）
     static_dir: str = ""
