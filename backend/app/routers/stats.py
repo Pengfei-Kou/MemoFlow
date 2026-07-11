@@ -11,8 +11,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
 from app.database import get_session
-from app.schemas import StatsResponse
-from app.crud import get_stats, get_review_history, get_deck_source_ids
+from app.schemas import StatsResponse, TodaySummaryResponse
+from app.crud import get_stats, get_review_history, get_today_summary, get_deck_source_ids
 
 router = APIRouter(prefix="/api/stats", tags=["Stats"])
 
@@ -29,6 +29,20 @@ def get_statistics(
         source_ids = get_deck_source_ids(session, deck_id, include_children)
 
     return get_stats(session, source_ids=source_ids)
+
+
+@router.get("/today", response_model=TodaySummaryResponse)
+def get_today(
+    session: Session = Depends(get_session),
+    deck_id: Optional[int] = Query(default=None, description="限定统计范围的 Deck ID"),
+    include_children: bool = Query(default=True, description="是否包含子 Deck"),
+):
+    """今日（本地逻辑日）复习小结：已复习次数 / 忘记次数 / 记住率"""
+    source_ids = None
+    if deck_id is not None:
+        source_ids = get_deck_source_ids(session, deck_id, include_children)
+
+    return get_today_summary(session, source_ids=source_ids)
 
 
 @router.get("/history")

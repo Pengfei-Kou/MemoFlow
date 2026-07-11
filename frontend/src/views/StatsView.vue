@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchSources, fetchReviewHistory, type SourceListItem, type ReviewHistoryDay } from '../api'
 import { useDeckStore } from '../stores/deck'
+import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 import { useStatsStore } from '../stores/stats'
 
 const deckStore = useDeckStore()
@@ -136,7 +137,8 @@ onMounted(load)
   <div class="page-container">
     <div class="flex items-center justify-between">
       <h1 class="page-title">学习统计 📊</h1>
-      <span class="badge" style="font-size: var(--text-caption)">🗂️ {{ currentScopeLabel }}</span>
+      <DeckScopeSelect />
+      <span class="badge desktop-only" style="font-size: var(--text-caption)">🗂️ {{ currentScopeLabel }}</span>
     </div>
 
     <div v-if="loading" class="flex items-center gap-md mt-xl">

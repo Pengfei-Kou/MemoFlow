@@ -78,6 +78,8 @@ class BlockResponse(BaseModel):
     next_review: Optional[datetime]
     is_suspended: bool
     notes: Optional[list[dict]] = None
+    stability: Optional[float] = None  # FSRS 记忆稳定性
+    difficulty: Optional[float] = None  # FSRS 难度（1~10）
 
     model_config = {"from_attributes": True}
 
@@ -153,6 +155,13 @@ class StatsResponse(BaseModel):
     learning: int  # 学习中（有 next_review 但 interval < 21）
     new: int  # 新卡片（从未学过）
     due_today: int  # 今日到期
+
+
+class TodaySummaryResponse(BaseModel):
+    """今日（本地逻辑日）复习小结"""
+    reviewed: int  # 今日已复习次数（不含历史回填）
+    again: int  # 其中评"忘了"的次数
+    retention: Optional[float] = None  # 记住率 = 1 - again/reviewed；无复习时为 None
 
 
 class DeckResponse(BaseModel):

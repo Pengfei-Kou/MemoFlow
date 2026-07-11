@@ -494,15 +494,22 @@ body {
   transform: rotateY(180deg);
 }
 
+/* --- Responsive visibility helpers --- */
+.mobile-only { display: none; }
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
   :root {
     --sidebar-width: 60px;
   }
 
+  .mobile-only { display: block; }
+  .desktop-only { display: none; }
+
   .sidebar-logo-text,
   .sidebar-nav-item span,
-  .sidebar-stats-mini {
+  .sidebar-stats-mini,
+  .sidebar-deck-selector { /* 60px 图标栏放不下 select，由各页顶部 DeckScopeSelect 补位 */
     display: none;
   }
 
@@ -516,7 +523,14 @@ body {
     padding: var(--space-md);
   }
 
+  /* PWA 全屏（viewport-fit=cover）下让出刘海/圆角安全区 */
+  .sidebar {
+    padding-top: calc(var(--space-xl) + env(safe-area-inset-top));
+    padding-left: env(safe-area-inset-left);
+  }
+
   .page-container {
     padding: var(--space-xxl) var(--space-lg);
+    padding-top: calc(var(--space-xxl) + env(safe-area-inset-top));
   }
 }

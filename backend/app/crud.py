@@ -671,6 +671,33 @@ def get_stats(session: Session, source_ids: list[int] | None = None) -> dict:
     }
 
 
+def get_today_summary(session: Session, source_ids: list[int] | None = None) -> dict:
+    """
+    今日（本地逻辑日）复习小结：复习次数与记住率。
+    基于 ReviewLog 统计，不含迁移回填的 quality=NULL 行。
+    """
+    day_start, day_end = local_day_bounds()
+    stmt = (
+        select(ReviewLog.quality)
+        .where(ReviewLog.reviewed_at >= day_start)
+        .where(ReviewLog.reviewed_at < day_end)
+        .where(ReviewLog.quality != None)  # noqa: E711
+    )
+    if source_ids is not None:
+        stmt = stmt.join(Block, ReviewLog.block_id == Block.id).where(
+            col(Block.source_id).in_(source_ids)
+        )
+
+    qualities = session.exec(stmt).all()
+    reviewed = len(qualities)
+    again = sum(1 for q in qualities if q < 3)
+    return {
+        "reviewed": reviewed,
+        "again": again,
+        "retention": round(1 - again / reviewed, 3) if reviewed else None,
+    }
+
+
 def get_review_history(
     session: Session,
     days: int = 90,

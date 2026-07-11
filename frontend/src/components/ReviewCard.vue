@@ -1,15 +1,17 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import type { Block } from '../api'
 
-defineProps<{
+const props = defineProps<{
   card: Block
   flipped: boolean
   submitting: boolean
-  lastResult: string
   /** Passage mode: show undo button */
   showUndo: boolean
   /** Last passage rating label */
   lastRatingLabel: string
+  /** 翻面时自动朗读答案句 */
+  autoSpeak?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +39,30 @@ function speak(text: string) {
   if (voice) utter.voice = voice
   utter.rate = 0.95
   window.speechSynthesis.speak(utter)
+}
+
+// 翻面自动朗读（开关在复习页 meta 行）
+watch(
+  () => props.flipped,
+  (flipped) => {
+    if (flipped && props.autoSpeak) speak(props.card.content)
+  }
+)
+
+// 附属知识点"胶囊遮罩"：触屏没有 hover，改为点按切换
+const isTouch = window.matchMedia('(hover: none)').matches
+const revealedNotes = ref<Set<number>>(new Set())
+
+watch(
+  () => props.card.id,
+  () => revealedNotes.value = new Set()
+)
+
+function toggleNote(idx: number) {
+  const next = new Set(revealedNotes.value)
+  if (next.has(idx)) next.delete(idx)
+  else next.add(idx)
+  revealedNotes.value = next
 }
 </script>
 
@@ -81,19 +107,14 @@ function speak(text: string) {
         <!-- Notes Section -->
         <div v-if="card.notes && card.notes.length > 0" class="review-notes-section">
           <div class="divider" style="margin: var(--space-md) 0; opacity: 0.5;"></div>
-          <p class="review-card-label text-xs text-faint" style="margin-bottom: var(--space-sm);">附属知识点 <span style="text-transform: none; opacity: 0.5; margin-left: 4px;">(悬浮查看翻译)</span></p>
+          <p class="review-card-label text-xs text-faint" style="margin-bottom: var(--space-sm);">附属知识点 <span style="text-transform: none; opacity: 0.5; margin-left: 4px;">{{ isTouch ? '(点按查看翻译)' : '(悬浮查看翻译)' }}</span></p>
           <ul class="review-notes-list">
             <li v-for="(note, idx) in card.notes" :key="idx" class="review-note-item">
               <span class="note-zh">{{ note.zh }}</span>
-              <span class="note-en-row"><span class="note-en-mask">{{ note.en }}</span><button class="btn-speak btn-speak-sm" @click.stop="speak(note.en)" title="朗读">🔊</button></span>
+              <span class="note-en-row"><span class="note-en-mask" :class="{ revealed: revealedNotes.has(idx) }" @click="toggleNote(idx)">{{ note.en }}</span><button class="btn-speak btn-speak-sm" @click.stop="speak(note.en)" title="朗读">🔊</button></span>
             </li>
           </ul>
         </div>
-
-        <!-- Feedback -->
-        <Transition name="fade">
-          <p v-if="lastResult" class="review-result text-violet text-sm">{{ lastResult }}</p>
-        </Transition>
 
         <!-- Rating buttons -->
         <div class="review-ratings" v-if="!submitting">
@@ -107,7 +128,7 @@ function speak(text: string) {
             <span class="rating-shortcut">[{{ r.shortcut }}]</span>
           </button>
         </div>
-        <div v-else class="flex items-center gap-md mt-xl" style="justify-content: center;">
+        <div v-else class="review-submitting flex items-center gap-md mt-xl" style="justify-content: center;">
           <div class="spinner"></div>
           <span class="text-mute text-sm">提交中...</span>
         </div>
@@ -241,7 +262,8 @@ function speak(text: string) {
   margin-top: 4px;
 }
 .note-en-mask:hover,
-.note-en-mask:active {
+.note-en-mask:active,
+.note-en-mask.revealed {
   background-color: transparent;
   color: #ffffff;
 }
@@ -250,11 +272,6 @@ function speak(text: string) {
   display: flex;
   justify-content: center;
   padding-top: var(--space-lg);
-}
-
-.review-result {
-  text-align: center;
-  margin-top: var(--space-md);
 }
 
 .review-ratings {
@@ -306,5 +323,38 @@ function speak(text: string) {
 .card-reveal-enter-to {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* ─── 移动端：操作区固定底栏（拇指热区 + PWA 安全区）────── */
+@media (max-width: 768px) {
+  .review-card-actions,
+  .review-ratings,
+  .review-submitting {
+    position: fixed;
+    bottom: 0;
+    left: var(--sidebar-width);
+    right: 0;
+    margin: 0;
+    padding: var(--space-md) var(--space-lg) calc(var(--space-md) + env(safe-area-inset-bottom));
+    background-color: var(--color-primary-deep);
+    border-top: 1px solid var(--color-hairline-dark);
+    z-index: 90;
+  }
+
+  .review-rating-btn {
+    min-height: 48px;
+    padding: 10px 8px;
+  }
+
+  .review-card-actions .btn-pill {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+  }
+
+  /* 给固定底栏让位，避免卡片内容被盖住 */
+  .review-card {
+    margin-bottom: 110px;
+  }
 }
 </style>

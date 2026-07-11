@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { fetchBlocks, deleteBlock, type Block } from '../api'
-
 import { useDeckStore } from '../stores/deck'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 
 const deckStore = useDeckStore()
 const blocks  = ref<Block[]>([])
@@ -10,6 +11,25 @@ const loading = ref(false)
 const error   = ref('')
 const search  = ref('')
 const deleting = ref<number | null>(null)
+const pendingDelete = ref<number | null>(null)
+
+type StatusFilter = 'all' | 'new' | 'learning' | 'mastered' | 'suspended'
+const statusFilter = ref<StatusFilter>('all')
+
+const statusChips: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'new', label: '新' },
+  { value: 'learning', label: '学习中' },
+  { value: 'mastered', label: '已掌握' },
+  { value: 'suspended', label: '已暂停' },
+]
+
+function blockStatus(b: Block): StatusFilter {
+  if (b.is_suspended) return 'suspended'
+  if (b.next_review == null) return 'new'
+  if (b.interval >= 21) return 'mastered'
+  return 'learning'
+}
 
 async function load() {
   loading.value = true
@@ -24,19 +44,32 @@ async function load() {
 }
 
 // Re-load when the selected Deck changes
-import { watch } from 'vue'
 watch(() => deckStore.selectedDeckId, load)
 
 const filtered = computed(() => {
+  let list = blocks.value
+  if (statusFilter.value !== 'all') {
+    list = list.filter(b => blockStatus(b) === statusFilter.value)
+  }
   const q = search.value.toLowerCase()
-  if (!q) return blocks.value
-  return blocks.value.filter(b =>
+  if (!q) return list
+  return list.filter(b =>
     b.content.toLowerCase().includes(q) || b.quiz.toLowerCase().includes(q)
   )
 })
 
-async function handleDelete(id: number) {
-  if (!confirm('确认删除这张卡片？')) return
+const statusCount = computed(() => {
+  const counts: Record<StatusFilter, number> = {
+    all: blocks.value.length, new: 0, learning: 0, mastered: 0, suspended: 0,
+  }
+  for (const b of blocks.value) counts[blockStatus(b)]++
+  return counts
+})
+
+async function confirmDelete() {
+  const id = pendingDelete.value
+  pendingDelete.value = null
+  if (id == null) return
   deleting.value = id
   try {
     await deleteBlock(id)
@@ -60,6 +93,14 @@ function intervalClass(interval: number): string {
   return 'badge-learning'
 }
 
+/** FSRS 难度（1~10）→ 难卡标签，只在偏难时显示避免噪音 */
+function difficultyTag(b: Block): string | null {
+  if (b.difficulty == null) return null
+  if (b.difficulty >= 8) return '硬骨头'
+  if (b.difficulty >= 6.5) return '偏难'
+  return null
+}
+
 onMounted(load)
 </script>
 
@@ -67,7 +108,10 @@ onMounted(load)
   <div class="page-container">
     <div class="flex items-center justify-between">
       <h1 class="page-title" style="margin-bottom: 0">卡片库</h1>
-      <span class="badge">{{ filtered.length }} 张</span>
+      <div class="flex items-center gap-md">
+        <DeckScopeSelect />
+        <span class="badge">{{ filtered.length }} 张</span>
+      </div>
     </div>
 
     <!-- Search -->
@@ -79,6 +123,19 @@ onMounted(load)
         type="text"
         placeholder="搜索卡片内容…"
       />
+    </div>
+
+    <!-- Status filter chips -->
+    <div class="library-chips mt-lg">
+      <button
+        v-for="chip in statusChips"
+        :key="chip.value"
+        class="library-chip"
+        :class="{ active: statusFilter === chip.value }"
+        @click="statusFilter = chip.value"
+      >
+        {{ chip.label }} <span class="library-chip-count">{{ statusCount[chip.value] }}</span>
+      </button>
     </div>
 
     <!-- Error -->
@@ -93,7 +150,7 @@ onMounted(load)
     <!-- Empty -->
     <div v-else-if="filtered.length === 0 && !loading" class="library-empty">
       <p style="font-size: 40px">📭</p>
-      <p class="text-mute">{{ search ? '没有匹配的卡片' : '还没有卡片，去导入内容吧' }}</p>
+      <p class="text-mute">{{ search || statusFilter !== 'all' ? '没有匹配的卡片' : '还没有卡片，去导入内容吧' }}</p>
     </div>
 
     <!-- List -->
@@ -111,16 +168,25 @@ onMounted(load)
           <span class="badge" :class="intervalClass(block.interval)">
             {{ intervalLabel(block.interval) }}
           </span>
+          <span v-if="difficultyTag(block)" class="badge badge-hard">
+            🔥 {{ difficultyTag(block) }}
+          </span>
           <button
             class="btn btn-danger"
             :disabled="deleting === block.id"
-            @click="handleDelete(block.id)"
+            @click="pendingDelete = block.id"
           >
             {{ deleting === block.id ? '…' : '删除' }}
           </button>
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :message="pendingDelete != null ? '确认删除这张卡片？\n复习进度将一并删除，此操作不可撤销。' : null"
+      @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
+    />
 
   </div>
 </template>
@@ -133,6 +199,35 @@ onMounted(load)
   gap: var(--space-lg);
   padding: var(--space-huge) 0;
   text-align: center;
+}
+
+.library-chips {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.library-chip {
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-full);
+  color: var(--color-on-dark-mute);
+  font-size: var(--text-caption);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.library-chip:hover {
+  border-color: var(--color-surface-violet);
+}
+.library-chip.active {
+  color: var(--color-surface-violet);
+  border-color: var(--color-surface-violet);
+  background-color: rgba(201, 180, 250, 0.08);
+}
+.library-chip-count {
+  opacity: 0.6;
+  margin-left: 2px;
 }
 
 .library-list {
@@ -189,4 +284,5 @@ onMounted(load)
 .badge-new      { color: var(--color-surface-violet); border-color: var(--color-surface-violet); }
 .badge-mastered { color: #4db6b6; border-color: rgba(77,182,182,0.4); }
 .badge-learning { color: var(--color-on-dark-mute); }
+.badge-hard     { color: #e5a373; border-color: rgba(229,163,115,0.4); }
 </style>

@@ -36,6 +36,8 @@ export interface Block {
   next_review: string | null
   is_suspended: boolean
   notes?: { zh: string; en: string }[] | null
+  stability?: number | null   // FSRS 记忆稳定性
+  difficulty?: number | null  // FSRS 难度（1~10）
 }
 
 export interface SourceListItem {
@@ -237,6 +239,17 @@ export function fetchStats(deckId?: number | null) {
 export interface ReviewHistoryDay {
   date: string   // "YYYY-MM-DD"
   count: number
+}
+
+export interface TodaySummary {
+  reviewed: number
+  again: number
+  retention: number | null
+}
+
+export function fetchTodaySummary(deckId?: number | null) {
+  const q = deckId != null ? `?deck_id=${deckId}&include_children=true` : ''
+  return request<TodaySummary>(`/stats/today${q}`)
 }
 
 export function fetchReviewHistory(days = 90, deckId?: number | null) {

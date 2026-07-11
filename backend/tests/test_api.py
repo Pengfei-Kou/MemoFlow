@@ -261,3 +261,25 @@ class TestHealthAPI:
         resp = c.get("/api/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "running"
+
+
+class TestTodaySummaryAPI:
+    """Tests for /api/stats/today endpoint."""
+
+    def test_today_empty(self, client):
+        c, _ = client
+        resp = c.get("/api/stats/today")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == {"reviewed": 0, "again": 0, "retention": None}
+
+    def test_today_after_reviews(self, client):
+        c, engine = client
+        _seed_data(engine)
+        ids = [b["id"] for b in c.get("/api/blocks").json()]
+        c.post(f"/api/review/{ids[0]}", json={"quality": 4})
+        c.post(f"/api/review/{ids[1]}", json={"quality": 1})
+        data = c.get("/api/stats/today").json()
+        assert data["reviewed"] == 2
+        assert data["again"] == 1
+        assert data["retention"] == 0.5

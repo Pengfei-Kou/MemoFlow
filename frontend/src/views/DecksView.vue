@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { fetchDecks, createDeck, updateDeck, deleteDeck, type Deck } from '../api'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useDeckStore } from '../stores/deck'
 
 const deckStore = useDeckStore()
@@ -168,8 +169,12 @@ async function handleSave() {
 }
 
 // ── Delete ────────────────────────────────────────────────
-async function handleDelete(deck: Deck) {
-  if (!confirm(`确认删除 Deck「${deck.path}」及其所有 Sources 和 Blocks？此操作不可撤销。`)) return
+const pendingDelete = ref<Deck | null>(null)
+
+async function confirmDelete() {
+  const deck = pendingDelete.value
+  pendingDelete.value = null
+  if (!deck) return
   try {
     await deleteDeck(deck.id)
     await load()
@@ -280,7 +285,7 @@ onMounted(load)
             <span class="badge deck-strategy-badge">{{ node.deck.parser_config?.strategy ?? '—' }}</span>
             <div class="flex gap-sm">
               <button class="btn btn-ghost btn-sm" @click="startEdit(node.deck)">编辑</button>
-              <button class="btn btn-ghost btn-sm deck-delete-btn" @click="handleDelete(node.deck)">删除</button>
+              <button class="btn btn-ghost btn-sm deck-delete-btn" @click="pendingDelete = node.deck">删除</button>
             </div>
           </div>
         </div>
@@ -337,6 +342,11 @@ onMounted(load)
         </div>
       </div>
     </div>
+    <ConfirmDialog
+      :message="pendingDelete ? `确认删除 Deck「${pendingDelete.path}」及其所有 Sources 和 Blocks？\n此操作不可撤销。` : null"
+      @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
+    />
   </div>
 </template>
 

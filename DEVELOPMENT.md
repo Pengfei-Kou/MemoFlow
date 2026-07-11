@@ -181,6 +181,7 @@ MemoFlowV3/
 | Method | Path | 说明 |
 |--------|------|------|
 | `GET` | `/api/stats?deck_id=N` | 全局/按 Deck 统计 |
+| `GET` | `/api/stats/today?deck_id=N` | 今日（本地逻辑日）复习小结：次数/忘记数/记住率 |
 | `GET` | `/api/stats/history?days=90` | 复习热力图数据 |
 
 ---

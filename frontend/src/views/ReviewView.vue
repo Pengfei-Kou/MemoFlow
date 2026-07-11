@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { fetchNextCard, submitReview, submitBatchReview, type Block } from '../api'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import {
+  fetchNextCard, submitReview, submitBatchReview, fetchTodaySummary,
+  type Block, type TodaySummary,
+} from '../api'
 import { useDeckStore } from '../stores/deck'
 import { useStatsStore } from '../stores/stats'
 import ReviewCard from '../components/ReviewCard.vue'
+import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 
 const deckStore = useDeckStore()
 const statsStore = useStatsStore()
@@ -17,15 +21,31 @@ const loading     = ref(false)
 const submitting  = ref(false)
 const error       = ref('')
 const done        = ref(false)
-const lastResult  = ref<string>('')
 const sourceTitle = ref<string | null>(null)
 const deckName    = ref<string | null>(null)
+const today       = ref<TodaySummary | null>(null)
 
 // Passage review state
 const reviewMode     = ref<'card' | 'passage'>('card')
 const batchCards     = ref<Block[]>([])
 const batchIndex     = ref(0)
 const batchQualities = ref<number[]>([])
+
+// 翻面自动朗读（记 localStorage）
+const autoSpeak = ref(localStorage.getItem('memoflow-autospeak') === '1')
+function toggleAutoSpeak() {
+  autoSpeak.value = !autoSpeak.value
+  localStorage.setItem('memoflow-autospeak', autoSpeak.value ? '1' : '0')
+}
+
+// 轻量 toast：不阻塞切卡的评分反馈
+const toast = ref('')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+function showToast(msg: string) {
+  toast.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toast.value = ''), 2200)
+}
 
 // ─── Ratings constant ─────────────────────────────────────
 const ratings = [
@@ -40,10 +60,13 @@ async function loadNext() {
   loading.value = true
   error.value   = ''
   flipped.value = false
-  lastResult.value = ''
   submitting.value = false
   try {
-    const data = await fetchNextCard(deckStore.selectedDeckId)
+    const [data, summary] = await Promise.all([
+      fetchNextCard(deckStore.selectedDeckId),
+      fetchTodaySummary(deckStore.selectedDeckId).catch(() => null),
+    ])
+    today.value = summary
     if (!data.block && (!data.batch || data.batch.length === 0)) {
       done.value = true
       card.value = null
@@ -54,7 +77,7 @@ async function loadNext() {
       sourceTitle.value = data.source_title ?? null
       deckName.value    = data.deck_name ?? null
       done.value    = false
-      
+
       if (data.review_mode === 'passage' && data.batch && data.batch.length > 0) {
         reviewMode.value = 'passage'
         batchCards.value = data.batch
@@ -74,6 +97,9 @@ async function loadNext() {
   }
 }
 
+// 切换复习范围时重载队列
+watch(() => deckStore.selectedDeckId, () => loadNext())
+
 // ─── Rating ───────────────────────────────────────────────
 function calculatePassageQuality(qualities: number[]): number {
   let score = 0
@@ -92,11 +118,11 @@ function calculatePassageQuality(qualities: number[]): number {
 
 async function rate(quality: number, label: string) {
   if (!card.value || submitting.value) return
-  
+
   if (reviewMode.value === 'passage' && batchCards.value.length > 0) {
     batchQualities.value.push(quality)
     batchIndex.value++
-    
+
     if (batchIndex.value < batchCards.value.length) {
       card.value = batchCards.value[batchIndex.value]
       flipped.value = false
@@ -106,9 +132,9 @@ async function rate(quality: number, label: string) {
       try {
         const blockIds = batchCards.value.map(b => b.id)
         const res = await submitBatchReview(blockIds, overall)
-        lastResult.value = `✓ 整段 ${res.message}`
         statsStore.invalidate()
-        setTimeout(() => loadNext(), 1200)
+        showToast(`✓ 整段 ${res.message}`)
+        loadNext()
       } catch (e: unknown) {
         error.value = e instanceof Error ? e.message : '批量提交失败'
         submitting.value = false
@@ -118,9 +144,9 @@ async function rate(quality: number, label: string) {
     submitting.value = true
     try {
       const res = await submitReview(card.value.id, quality)
-      lastResult.value = `✓ ${label} — 下次复习：${new Date(res.next_review).toLocaleDateString('zh-CN')}`
       statsStore.invalidate()
-      setTimeout(() => loadNext(), 900)
+      showToast(`✓ ${label} — ${res.message.split('→ ')[1] ?? res.message}`)
+      loadNext()
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : '提交失败'
       submitting.value = false
@@ -170,6 +196,15 @@ const progressLabel = computed(() => {
   return label
 })
 
+// 今日进度：已复习 / (已复习 + 队列剩余 + 当前这张)
+const progressRatio = computed(() => {
+  if (!today.value) return null
+  const doneCount = today.value.reviewed
+  const total = doneCount + remaining.value + (card.value ? 1 : 0)
+  if (total === 0) return null
+  return Math.min(1, doneCount / total)
+})
+
 const cardLabel = computed(() => {
   if (!card.value) return ''
   const parts: string[] = []
@@ -190,6 +225,11 @@ const lastRatingLabel = computed(() => {
   return ratings.find(r => r.quality === lastQ)?.label || '未知'
 })
 
+const retentionLabel = computed(() => {
+  if (!today.value || today.value.retention == null) return null
+  return Math.round(today.value.retention * 100)
+})
+
 onMounted(() => {
   loadNext()
   window.addEventListener('keydown', onKeydown)
@@ -197,11 +237,27 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
+  if (toastTimer) clearTimeout(toastTimer)
 })
 </script>
 
 <template>
   <div class="page-container review-page">
+
+    <!-- 今日进度条 -->
+    <div v-if="progressRatio !== null && !done" class="review-progress-track">
+      <div class="review-progress-fill" :style="{ width: `${progressRatio * 100}%` }"></div>
+    </div>
+
+    <!-- 评分反馈 toast -->
+    <Transition name="toast">
+      <div v-if="toast" class="review-toast">{{ toast }}</div>
+    </Transition>
+
+    <!-- 窄屏：复习范围选择（桌面端由侧边栏承担） -->
+    <div class="review-scope-row mobile-only">
+      <DeckScopeSelect />
+    </div>
 
     <!-- Loading state -->
     <div v-if="loading" class="review-center">
@@ -223,6 +279,10 @@ onUnmounted(() => {
       <div class="review-done-card card">
         <p style="font-size: 48px; margin-bottom: var(--space-md)">🎉</p>
         <h2 class="review-done-title">今天全部完成！</h2>
+        <p v-if="today && today.reviewed > 0" class="review-done-summary">
+          今日复习 <strong>{{ today.reviewed }}</strong> 次<template v-if="retentionLabel !== null">
+            · 记住率 <strong>{{ retentionLabel }}%</strong></template>
+        </p>
         <p class="text-mute" style="margin-top: var(--space-md)">
           明天继续，间隔重复的魔法正在发生。
         </p>
@@ -239,7 +299,13 @@ onUnmounted(() => {
           <span v-if="isNew" class="badge" style="color: var(--color-surface-violet); border-color: var(--color-surface-violet)">新卡片</span>
         </div>
         <div class="flex items-center gap-md">
-          <span class="review-deck-scope text-xs">🗂️ {{ currentDeckLabel }}</span>
+          <button
+            class="review-autospeak-btn"
+            :class="{ on: autoSpeak }"
+            @click="toggleAutoSpeak"
+            :title="autoSpeak ? '翻面自动朗读：开' : '翻面自动朗读：关'"
+          >🔊 {{ autoSpeak ? '自动' : '手动' }}</button>
+          <span class="review-deck-scope text-xs desktop-only">🗂️ {{ currentDeckLabel }}</span>
           <span class="text-faint text-xs">{{ progressLabel }}</span>
         </div>
       </div>
@@ -250,9 +316,9 @@ onUnmounted(() => {
         :card="card"
         :flipped="flipped"
         :submitting="submitting"
-        :last-result="lastResult"
         :show-undo="reviewMode === 'passage' && batchIndex > 0"
         :last-rating-label="lastRatingLabel"
+        :auto-speak="autoSpeak"
         @flip="flipped = true"
         @rate="rate"
         @undo="undo"
@@ -273,6 +339,51 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 100vh;
   padding-top: var(--space-huge);
+}
+
+/* ─── 今日进度条 ─────────────────────────────────────────── */
+.review-progress-track {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  height: 3px;
+  background-color: var(--color-primary-mid);
+  z-index: 95;
+}
+.review-progress-fill {
+  height: 100%;
+  background-color: var(--color-surface-violet);
+  transition: width 0.4s ease;
+}
+
+/* ─── Toast ──────────────────────────────────────────────── */
+.review-toast {
+  position: fixed;
+  top: calc(var(--space-lg) + env(safe-area-inset-top));
+  right: var(--space-xl);
+  background-color: var(--color-primary-deep);
+  border: 1px solid var(--color-surface-violet);
+  color: var(--color-surface-violet);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: var(--text-caption);
+  z-index: 150;
+  pointer-events: none;
+  max-width: 70vw;
+}
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.review-scope-row {
+  margin-bottom: var(--space-lg);
 }
 
 .review-center {
@@ -297,6 +408,15 @@ onUnmounted(() => {
   letter-spacing: -0.63px;
 }
 
+.review-done-summary {
+  margin-top: var(--space-lg);
+  color: var(--color-on-dark-mute);
+}
+.review-done-summary strong {
+  color: var(--color-surface-violet);
+  font-weight: 540;
+}
+
 .review-active {
   flex: 1;
   max-width: 680px;
@@ -306,11 +426,26 @@ onUnmounted(() => {
 
 .review-meta {
   margin-bottom: var(--space-lg);
-  opacity: 0.3;
+  opacity: 0.5;
   transition: opacity 0.3s ease;
 }
 .review-meta:hover {
   opacity: 1;
+}
+
+.review-autospeak-btn {
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-dark-mute);
+  font-size: var(--text-micro);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.review-autospeak-btn.on {
+  color: var(--color-surface-violet);
+  border-color: var(--color-surface-violet);
 }
 
 .review-keyboard-hint {
@@ -335,5 +470,15 @@ kbd {
   border: 1px solid var(--color-hairline-dark);
   border-radius: var(--radius-xs);
   margin: 0 2px;
+}
+
+/* 触屏：meta 常显、键盘提示无意义 */
+@media (hover: none) {
+  .review-meta {
+    opacity: 1;
+  }
+  .review-keyboard-hint {
+    display: none;
+  }
 }
 </style>
