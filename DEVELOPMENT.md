@@ -2,7 +2,7 @@
 
 ## 1. 项目概述
 
-MemoFlow V3 是一个**间隔重复记忆系统**，基于 SM-2 算法帮助用户高效记忆外语句子。支持三种导入方式（文本粘贴 / URL 抓取 / Markdown 上传），通过 LLM 智能拆解文本，并以 Deck 树形结构组织学习内容。
+MemoFlow V3 是一个**间隔重复记忆系统**，基于 FSRS 算法（默认，可回退 SM-2）帮助用户高效记忆外语句子。支持三种导入方式（文本粘贴 / URL 抓取 / Markdown 上传），通过 LLM 智能拆解文本，并以 Deck 树形结构组织学习内容。
 
 ### 架构
 
@@ -124,6 +124,22 @@ MemoFlowV3/
 | next_review | datetime, nullable | 下次复习时间（UTC） |
 | first_reviewed_at | datetime, nullable | 首次学习时间 |
 | is_suspended | bool | 是否暂停复习 |
+| stability | float, nullable | FSRS 记忆稳定性 |
+| difficulty | float, nullable | FSRS 难度（1~10） |
+| fsrs_state | int, nullable | FSRS 状态：1=Learning 2=Review 3=Relearning |
+| fsrs_step | int, nullable | 学习阶段步数索引 |
+
+### ReviewLog（复习日志，2026-07-11 新增）
+追加式，永不更新/删除（卡片删除后日志保留）。热力图与未来 FSRS 参数优化的数据基础。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | int, PK | 主键 |
+| block_id | int, index | 所属卡片（不设 FK：日志比卡片长寿） |
+| quality | int, nullable | 评分 1/3/4/5；NULL=迁移时历史回填 |
+| reviewed_at | datetime, index | 复习时间（UTC） |
+| interval_before / interval_after | int | 评分前后的间隔天数 |
+| stability_after / difficulty_after | float, nullable | 评分后的 FSRS 状态 |
 
 ---
 
@@ -281,10 +297,11 @@ cd backend
 
 | 方向 | 说明 | 复杂度 |
 |------|------|--------|
-| **认证系统** | 当前 API 完全公开，`HOST=0.0.0.0` 监听所有网卡。本地使用无碍，若部署到公网需加 JWT 或 Basic Auth | 中 |
-| **SM-2 → FSRS** | FSRS（Free Spaced Repetition Scheduler）在记忆效率上显著优于 SM-2，Anki 已默认使用 FSRS-5 | 中 |
-| **子笔记独立复习** | 当前 `notes` 是 JSON blob，无法参与 SM-2 调度。如需独立复习需拆为 `Note` 表 + 独立 SM-2 字段 | 高 |
-| **移动端适配** | 打分按钮、键盘快捷键未针对触屏优化；侧边栏在窄屏下已可收起 | 中 |
+| ~~认证系统~~ | ✅ 已完成（2026-07-10）：HTTP Basic Auth 中间件，生产必开 | 中 |
+| ~~SM-2 → FSRS~~ | ✅ 已完成（2026-07-11）：默认 FSRS-6（py-fsrs），`scheduler_algorithm=sm2` 可回退；ReviewLog 攒够历史后可做参数个性化优化 | 中 |
+| **FSRS 参数优化** | ReviewLog 攒 ~1000 条真实评分后，用 py-fsrs optimizer 训练个人参数替换默认权重 | 低 |
+| **子笔记独立复习** | 当前 `notes` 是 JSON blob，无法参与调度。如需独立复习需拆为 `Note` 表 + 独立调度字段 | 高 |
+| **移动端适配** | ✅ 部分完成（2026-07-11）：PWA 加主屏 + TTS 朗读；打分按钮触屏优化仍可做 | 中 |
 
 ### 🎯 长期演进
 
@@ -300,7 +317,8 @@ cd backend
 ## 9. 开发约定
 
 ### 后端
-- 所有时间使用 UTC：`datetime.now(timezone.utc)`
+- 存储时间一律 UTC：`datetime.now(timezone.utc)`；**"今天"的判定走本地逻辑日**（`services/timeutils.py`：America/Toronto + 凌晨 4 点滚动），别手写日界比较
+- 调度算法默认 FSRS（`services/fsrs_scheduler.py`），`scheduler_algorithm=sm2` 可回退；每次评分必须追加 ReviewLog
 - CRUD 函数不含 `commit()`，由 Service/Router 控制事务
 - Schema 变更必须通过 Alembic 迁移
 - 新增 API 路由需在 `test_api.py` 中添加对应测试

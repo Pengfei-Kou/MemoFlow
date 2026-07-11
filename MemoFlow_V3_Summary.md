@@ -34,10 +34,15 @@ Router (HTTP 薄代理)  →  Service (业务编排)  →  CRUD (数据操作)
 - JSON 结构：`{ strategy, source_lang, target_lang, custom_prompt }`
 - 影响 LLM prompt 生成（`parsers.py`）
 
-**时区统一：**
-- 所有 `datetime` 字段使用 `datetime.now(timezone.utc)` 存入
-- `scheduler.py` 的 `get_next_review_date()` 使用 `datetime.now(timezone.utc).date()`
-- 杜绝 `date.today()`（本地时区）与 UTC 混用
+**时区（2026-07-11 修订）：**
+- 存储：所有 `datetime` 字段使用 `datetime.now(timezone.utc)` 存入（naive UTC 落库），杜绝 `date.today()` 混用
+- 判定："今天"（到期/配额/热力图）= 本地逻辑日 —— `services/timeutils.py` 的 `local_day_bounds()/logical_date()`（America/Toronto + 凌晨 4 点滚动，config 可调），不再用 UTC 日界
+
+**调度（2026-07-11 修订）：**
+- 默认 FSRS-6（`services/fsrs_scheduler.py`，py-fsrs），`scheduler_algorithm=sm2` 回退
+- `enable_fuzzing=False`：passage 模式依赖同篇卡片到期日聚拢，别打开
+- 旧 SM-2 卡片首次复习时接种（stability≈interval，difficulty←ease_factor 线性映射）
+- 每次评分追加一条 `ReviewLog`（含迁移回填的 quality=NULL 行）；热力图从日志聚合
 
 ### 3. Alembic 迁移
 
