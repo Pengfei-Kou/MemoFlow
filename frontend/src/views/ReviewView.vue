@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
-  fetchNextCard, submitReview, submitBatchReview, fetchTodaySummary,
+  fetchNextCard, submitReview, submitBatchReview, fetchTodaySummary, undoReview,
   type Block, type TodaySummary,
 } from '../api'
 import { useDeckStore } from '../stores/deck'
 import { useStatsStore } from '../stores/stats'
 import ReviewCard from '../components/ReviewCard.vue'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
+import EditCardModal from '../components/EditCardModal.vue'
 
 const deckStore = useDeckStore()
 const statsStore = useStatsStore()
@@ -38,13 +39,44 @@ function toggleAutoSpeak() {
   localStorage.setItem('memoflow-autospeak', autoSpeak.value ? '1' : '0')
 }
 
-// 轻量 toast：不阻塞切卡的评分反馈
+// 轻量 toast：不阻塞切卡的评分反馈；单卡评分后附带"撤销"按钮
 const toast = ref('')
+const undoableBlockId = ref<number | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
-function showToast(msg: string) {
+function showToast(msg: string, undoBlockId: number | null = null) {
   toast.value = msg
+  undoableBlockId.value = undoBlockId
   if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value = ''), 2200)
+  toastTimer = setTimeout(() => {
+    toast.value = ''
+    undoableBlockId.value = null
+  }, undoBlockId ? 5000 : 2200)
+}
+
+async function handleUndo() {
+  const id = undoableBlockId.value
+  if (!id) return
+  undoableBlockId.value = null
+  toast.value = ''
+  try {
+    await undoReview(id)
+    statsStore.invalidate()
+    showToast('↩︎ 已撤销，重新作答')
+    loadNext()
+  } catch (e: unknown) {
+    showToast(e instanceof Error ? e.message : '撤销失败')
+  }
+}
+
+// 卡片快速编辑（复习页翻面后 ✏️）
+const editingBlock = ref<Block | null>(null)
+function onCardSaved(updated: Block) {
+  if (card.value && card.value.id === updated.id) {
+    card.value = { ...card.value, quiz: updated.quiz, content: updated.content }
+  }
+  const idx = batchCards.value.findIndex(b => b.id === updated.id)
+  if (idx >= 0) batchCards.value[idx] = { ...batchCards.value[idx], quiz: updated.quiz, content: updated.content }
+  editingBlock.value = null
 }
 
 // ─── Ratings constant ─────────────────────────────────────
@@ -142,10 +174,11 @@ async function rate(quality: number, label: string) {
     }
   } else {
     submitting.value = true
+    const ratedId = card.value.id
     try {
-      const res = await submitReview(card.value.id, quality)
+      const res = await submitReview(ratedId, quality)
       statsStore.invalidate()
-      showToast(`✓ ${label} — ${res.message.split('→ ')[1] ?? res.message}`)
+      showToast(`✓ ${label} — ${res.message.split('→ ')[1] ?? res.message}`, ratedId)
       loadNext()
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : '提交失败'
@@ -165,9 +198,11 @@ function undo() {
 // ─── Keyboard shortcuts ───────────────────────────────────
 function onKeydown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+  if (editingBlock.value) return // 编辑弹窗打开时不响应复习快捷键
   if (e.key === 'Backspace') {
     e.preventDefault()
-    undo()
+    if (reviewMode.value === 'passage') undo()
+    else handleUndo() // 单卡模式：撤销刚提交的评分（toast 存续期内）
     return
   }
   if (e.key === ' ' || e.key === 'Enter') {
@@ -249,9 +284,12 @@ onUnmounted(() => {
       <div class="review-progress-fill" :style="{ width: `${progressRatio * 100}%` }"></div>
     </div>
 
-    <!-- 评分反馈 toast -->
+    <!-- 评分反馈 toast（单卡评分附撤销） -->
     <Transition name="toast">
-      <div v-if="toast" class="review-toast">{{ toast }}</div>
+      <div v-if="toast" class="review-toast" :class="{ actionable: undoableBlockId }">
+        <span>{{ toast }}</span>
+        <button v-if="undoableBlockId" class="toast-undo-btn" @click="handleUndo">撤销</button>
+      </div>
     </Transition>
 
     <!-- 窄屏：复习范围选择（桌面端由侧边栏承担） -->
@@ -282,6 +320,9 @@ onUnmounted(() => {
         <p v-if="today && today.reviewed > 0" class="review-done-summary">
           今日复习 <strong>{{ today.reviewed }}</strong> 次<template v-if="retentionLabel !== null">
             · 记住率 <strong>{{ retentionLabel }}%</strong></template>
+        </p>
+        <p v-if="today && today.streak > 1" class="review-done-summary">
+          🔥 连续学习 <strong>{{ today.streak }}</strong> 天
         </p>
         <p class="text-mute" style="margin-top: var(--space-md)">
           明天继续，间隔重复的魔法正在发生。
@@ -322,13 +363,20 @@ onUnmounted(() => {
         @flip="flipped = true"
         @rate="rate"
         @undo="undo"
+        @edit="editingBlock = card"
       />
 
       <!-- Keyboard hint -->
       <p class="text-faint text-xs review-keyboard-hint" style="text-align: center; margin-top: var(--space-xl)">
-        <kbd>Space</kbd> 翻牌 / 默认(良) · 或按 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> 打分
+        <kbd>Space</kbd> 翻牌 / 默认(良) · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> 打分 · <kbd>⌫</kbd> 撤销
       </p>
     </div>
+
+    <EditCardModal
+      :block="editingBlock"
+      @saved="onCardSaved"
+      @cancel="editingBlock = null"
+    />
 
   </div>
 </template>
@@ -362,6 +410,9 @@ onUnmounted(() => {
   position: fixed;
   top: calc(var(--space-lg) + env(safe-area-inset-top));
   right: var(--space-xl);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
   background-color: var(--color-primary-deep);
   border: 1px solid var(--color-surface-violet);
   color: var(--color-surface-violet);
@@ -370,7 +421,23 @@ onUnmounted(() => {
   font-size: var(--text-caption);
   z-index: 150;
   pointer-events: none;
-  max-width: 70vw;
+  max-width: 80vw;
+}
+.review-toast.actionable {
+  pointer-events: auto;
+}
+.toast-undo-btn {
+  background: transparent;
+  border: 1px solid var(--color-surface-violet);
+  border-radius: var(--radius-sm);
+  color: var(--color-surface-violet);
+  font-size: var(--text-micro);
+  padding: 2px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toast-undo-btn:hover {
+  background-color: rgba(201, 180, 250, 0.12);
 }
 .toast-enter-active,
 .toast-leave-active {

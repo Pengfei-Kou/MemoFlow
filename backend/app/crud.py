@@ -546,17 +546,71 @@ def _apply_rating(block: Block, quality: int, now: datetime) -> None:
     )
 
 
-def _log_review(session: Session, block: Block, quality: int, now: datetime, interval_before: int) -> None:
-    """追加一条复习日志（永不更新/删除）"""
+# 调度状态快照涉及的字段（撤销恢复用）
+_SCHED_FIELDS = (
+    "reps", "interval", "ease_factor",
+    "stability", "difficulty", "fsrs_state", "fsrs_step",
+    "last_review", "next_review", "first_reviewed_at",
+)
+_SCHED_DT_FIELDS = {"last_review", "next_review", "first_reviewed_at"}
+
+
+def _snapshot_state(block: Block) -> dict:
+    """卡片当前调度状态 → JSON 可存的快照（datetime 转 ISO 字符串）"""
+    snap = {}
+    for f in _SCHED_FIELDS:
+        v = getattr(block, f)
+        snap[f] = v.isoformat() if (f in _SCHED_DT_FIELDS and v is not None) else v
+    return snap
+
+
+def _restore_state(block: Block, snap: dict) -> None:
+    """快照 → 写回卡片调度状态"""
+    for f in _SCHED_FIELDS:
+        v = snap.get(f)
+        if f in _SCHED_DT_FIELDS and v is not None:
+            v = datetime.fromisoformat(v)
+        setattr(block, f, v)
+
+
+def _log_review(session: Session, block: Block, quality: int, now: datetime, state_before: dict) -> None:
+    """追加一条复习日志（除"撤销"外永不更新/删除）"""
     session.add(ReviewLog(
         block_id=block.id,
         quality=quality,
         reviewed_at=now,
-        interval_before=interval_before,
+        interval_before=state_before.get("interval", 0),
         interval_after=block.interval,
         stability_after=block.stability,
         difficulty_after=block.difficulty,
+        state_before=state_before,
     ))
+
+
+def undo_last_review(session: Session, block_id: int) -> Block | None:
+    """
+    撤销该卡片最近一次评分：按日志快照恢复调度状态，并删除那条日志。
+    没有可撤销的日志（或卡片不存在）返回 None。
+    """
+    block = session.get(Block, block_id)
+    if not block:
+        return None
+
+    log = session.exec(
+        select(ReviewLog)
+        .where(ReviewLog.block_id == block_id)
+        .where(ReviewLog.state_before != None)  # noqa: E711
+        .order_by(col(ReviewLog.id).desc())
+        .limit(1)
+    ).first()
+    if not log:
+        return None
+
+    _restore_state(block, log.state_before)
+    session.delete(log)  # 撤销 = 这次评分"没发生过"，日志一并移除
+    session.add(block)
+    session.flush()
+    return block
 
 
 def submit_review(session: Session, block_id: int, quality: int) -> Block | None:
@@ -570,7 +624,7 @@ def submit_review(session: Session, block_id: int, quality: int) -> Block | None
         return None
 
     now = datetime.now(timezone.utc)
-    interval_before = block.interval
+    state_before = _snapshot_state(block)
 
     _apply_rating(block, quality, now)
 
@@ -578,7 +632,7 @@ def submit_review(session: Session, block_id: int, quality: int) -> Block | None
     if block.first_reviewed_at is None:
         block.first_reviewed_at = now
 
-    _log_review(session, block, quality, now, interval_before)
+    _log_review(session, block, quality, now, state_before)
     session.add(block)
     session.flush()
     return block
@@ -600,12 +654,12 @@ def submit_batch_review(session: Session, block_ids: list[int], quality: int) ->
     now = datetime.now(timezone.utc)
 
     for block in blocks:
-        interval_before = block.interval
+        state_before = _snapshot_state(block)
         _apply_rating(block, quality, now)
         block.last_review = now
         if block.first_reviewed_at is None:
             block.first_reviewed_at = now
-        _log_review(session, block, quality, now, interval_before)
+        _log_review(session, block, quality, now, state_before)
         session.add(block)
 
     session.flush()
@@ -695,7 +749,25 @@ def get_today_summary(session: Session, source_ids: list[int] | None = None) -> 
         "reviewed": reviewed,
         "again": again,
         "retention": round(1 - again / reviewed, 3) if reviewed else None,
+        "streak": _compute_streak(session),
     }
+
+
+def _compute_streak(session: Session) -> int:
+    """
+    连续学习天数（按本地逻辑日，全局统计不分 Deck）。
+    今天还没复习不断签：从昨天往回数，今天有复习则计入。
+    """
+    review_days = {logical_date(dt) for dt in session.exec(select(ReviewLog.reviewed_at)).all()}
+    if not review_days:
+        return 0
+    today = logical_date()
+    day = today if today in review_days else today - timedelta(days=1)
+    streak = 0
+    while day in review_days:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
 
 
 def get_review_history(

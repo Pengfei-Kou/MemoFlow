@@ -18,6 +18,7 @@ const emit = defineEmits<{
   flip: []
   rate: [quality: number, label: string]
   undo: []
+  edit: []
 }>()
 
 const ratings = [
@@ -102,6 +103,7 @@ function toggleNote(idx: number) {
         <div class="review-answer-row">
           <p class="review-answer">{{ card.content }}</p>
           <button class="btn-speak" @click.stop="speak(card.content)" title="朗读句子">🔊</button>
+          <button class="btn-speak" @click.stop="emit('edit')" title="编辑卡片">✏️</button>
         </div>
 
         <!-- Notes Section -->

@@ -17,7 +17,7 @@ from app.schemas import (
     BatchReviewRequest, BatchReviewSubmitResponse,
 )
 from app.services.review_service import (
-    get_next_review, submit_single_review, submit_passage_review,
+    get_next_review, submit_single_review, submit_passage_review, undo_review,
 )
 
 router = APIRouter(prefix="/api/review", tags=["Review"])
@@ -45,6 +45,18 @@ def submit_batch_review_rating(
     result = submit_passage_review(session, req.block_ids, req.overall_quality)
     if not result:
         raise HTTPException(status_code=404, detail="卡片不存在")
+    return result
+
+
+@router.post("/{block_id}/undo", response_model=ReviewSubmitResponse)
+def undo_review_rating(
+    block_id: int,
+    session: Session = Depends(get_session),
+):
+    """撤销该卡片最近一次评分（按日志快照恢复调度状态）"""
+    result = undo_review(session, block_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="没有可撤销的评分")
     return result
 
 

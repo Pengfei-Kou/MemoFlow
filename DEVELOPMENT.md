@@ -171,6 +171,7 @@ MemoFlowV3/
 |--------|------|------|
 | `GET` | `/api/review/next?deck_id=N` | 获取下一张待复习卡片（card / passage 模式） |
 | `POST` | `/api/review/{block_id}` | 提交单卡评分（`Literal[1,3,4,5]`） |
+| `POST` | `/api/review/{block_id}/undo` | 撤销该卡最近一次评分（按日志快照恢复） |
 | `POST` | `/api/review/batch` | 提交 passage 级批量评分 |
 
 ### 卡片管理 `/api/blocks`
@@ -319,9 +320,10 @@ cd backend
 
 | 方向 | 说明 |
 |------|------|
+| **跟读练习** | TTS 放句 → 用户跟读 → Web Speech API 识别对比打分；口语场景的下一层能力（Felix 2026-07-11 列入待办，有精力再做） |
+| **FSRS 参数个性化** | ReviewLog 攒 ~1000 条评分后跑 optimizer，结果填 `FSRS_PARAMETERS` 环境变量即生效（钩子已就位，见 config.py） |
 | **多设备同步** | SQLite → PostgreSQL + 用户系统 |
 | **离线 PWA** | Service Worker 缓存，地铁/无网络环境下复习 |
-| **Docker 部署** | docker-compose 一键部署前后端 + 数据库 |
 | **富文本支持** | 引入 AST 解析器（如 remark），支持高亮、加粗等格式 |
 
 ---

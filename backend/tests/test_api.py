@@ -271,7 +271,7 @@ class TestTodaySummaryAPI:
         resp = c.get("/api/stats/today")
         assert resp.status_code == 200
         data = resp.json()
-        assert data == {"reviewed": 0, "again": 0, "retention": None}
+        assert data == {"reviewed": 0, "again": 0, "retention": None, "streak": 0}
 
     def test_today_after_reviews(self, client):
         c, engine = client
@@ -283,3 +283,45 @@ class TestTodaySummaryAPI:
         assert data["reviewed"] == 2
         assert data["again"] == 1
         assert data["retention"] == 0.5
+
+
+class TestUndoReview:
+    """Tests for POST /api/review/{id}/undo."""
+
+    def test_undo_restores_state_and_removes_log(self, client):
+        c, engine = client
+        _seed_data(engine)
+        block_id = c.get("/api/review/next").json()["block"]["id"]
+
+        before = c.get("/api/blocks").json()
+        target_before = next(b for b in before if b["id"] == block_id)
+
+        c.post(f"/api/review/{block_id}", json={"quality": 4})
+        resp = c.post(f"/api/review/{block_id}/undo")
+        assert resp.status_code == 200
+
+        after = c.get("/api/blocks").json()
+        target_after = next(b for b in after if b["id"] == block_id)
+        for field in ("reps", "interval", "next_review", "last_review", "stability"):
+            assert target_after[field] == target_before[field]
+
+        # 日志被移除 → 再撤销应 404
+        assert c.post(f"/api/review/{block_id}/undo").status_code == 404
+
+    def test_undo_nothing_to_undo(self, client):
+        c, engine = client
+        _seed_data(engine)
+        block_id = c.get("/api/blocks").json()[0]["id"]
+        assert c.post(f"/api/review/{block_id}/undo").status_code == 404
+
+
+class TestStreak:
+    """Streak 连续天数（今日复习后应 >= 1）."""
+
+    def test_streak_after_review_today(self, client):
+        c, engine = client
+        _seed_data(engine)
+        assert c.get("/api/stats/today").json()["streak"] == 0
+        block_id = c.get("/api/review/next").json()["block"]["id"]
+        c.post(f"/api/review/{block_id}", json={"quality": 4})
+        assert c.get("/api/stats/today").json()["streak"] == 1

@@ -19,7 +19,7 @@ from app.crud import (
     get_due_blocks, get_new_blocks, submit_review as crud_submit_review,
     get_due_source_batch, get_new_source_batch, submit_batch_review as crud_submit_batch_review,
     count_due_blocks, count_new_blocks, count_today_reviewed, count_today_new,
-    get_deck_by_id, get_deck_source_ids,
+    get_deck_by_id, get_deck_source_ids, undo_last_review as crud_undo_last_review,
 )
 from app.models import Source
 from app.schemas import (
@@ -174,6 +174,24 @@ def submit_single_review(session: Session, block_id: int, quality: int) -> Revie
         new_ease_factor=block.ease_factor,
         next_review=block.next_review,
         message=f"评分「{label}」→ 下次复习 {_humanize_next_review(block.next_review)}",
+    )
+
+
+def undo_review(session: Session, block_id: int) -> ReviewSubmitResponse | None:
+    """撤销该卡片最近一次评分（按日志快照恢复）；不可撤销时返回 None。"""
+    block = crud_undo_last_review(session, block_id)
+    if not block:
+        return None
+
+    session.commit()
+    session.refresh(block)
+
+    return ReviewSubmitResponse(
+        block_id=block.id,
+        new_interval=block.interval,
+        new_ease_factor=block.ease_factor,
+        next_review=block.next_review or datetime.now(timezone.utc),
+        message="已撤销上次评分",
     )
 
 

@@ -138,3 +138,6 @@ class ReviewLog(SQLModel, table=True):
     interval_after: int = Field(default=0)
     stability_after: Optional[float] = Field(default=None)
     difficulty_after: Optional[float] = Field(default=None)
+
+    # 评分前的完整调度状态快照（撤销用；历史回填行无快照故不可撤销）
+    state_before: Optional[dict] = Field(default=None, sa_column=Column(JSON))

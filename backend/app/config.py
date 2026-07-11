@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # 调度算法：fsrs（默认）/ sm2（回退开关，出问题时切回）
     scheduler_algorithm: str = "fsrs"
     desired_retention: float = 0.9  # FSRS 目标记忆保持率
+    # FSRS 个性化参数（21 个逗号分隔浮点数；留空用 FSRS-6 默认权重）。
+    # ReviewLog 攒够 ~1000 条评分后跑 optimizer，把结果填到这里即可生效，不用改代码
+    fsrs_parameters: str = ""
 
     # "逻辑日"判定：本地时区 + 凌晨滚动（存储仍一律 UTC，见 services/timeutils.py）
     timezone: str = "America/Toronto"

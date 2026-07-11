@@ -31,10 +31,14 @@ _scheduler: Scheduler | None = None
 def _get_scheduler() -> Scheduler:
     global _scheduler
     if _scheduler is None:
-        _scheduler = Scheduler(
-            desired_retention=settings.desired_retention,
-            enable_fuzzing=False,
-        )
+        kwargs = {
+            "desired_retention": settings.desired_retention,
+            "enable_fuzzing": False,
+        }
+        if settings.fsrs_parameters:
+            # 个性化权重（optimizer 训练结果），格式错误直接抛出让启动失败，避免静默用错参数
+            kwargs["parameters"] = tuple(float(x) for x in settings.fsrs_parameters.split(","))
+        _scheduler = Scheduler(**kwargs)
     return _scheduler
 
 

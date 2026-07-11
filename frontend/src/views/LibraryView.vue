@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
-import { fetchBlocks, deleteBlock, type Block } from '../api'
+import { fetchBlocks, deleteBlock, updateBlock, type Block } from '../api'
 import { useDeckStore } from '../stores/deck'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
+import EditCardModal from '../components/EditCardModal.vue'
 
 const deckStore = useDeckStore()
 const blocks  = ref<Block[]>([])
@@ -101,6 +102,30 @@ function difficultyTag(b: Block): string | null {
   return null
 }
 
+// 编辑
+const editingBlock = ref<Block | null>(null)
+function onCardSaved(updated: Block) {
+  const idx = blocks.value.findIndex(b => b.id === updated.id)
+  if (idx >= 0) blocks.value[idx] = updated
+  editingBlock.value = null
+}
+
+// 暂停/恢复
+const toggling = ref<number | null>(null)
+async function toggleSuspend(b: Block) {
+  if (toggling.value) return
+  toggling.value = b.id
+  try {
+    const updated = await updateBlock(b.id, { is_suspended: !b.is_suspended })
+    const idx = blocks.value.findIndex(x => x.id === b.id)
+    if (idx >= 0) blocks.value[idx] = updated
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败'
+  } finally {
+    toggling.value = null
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -159,6 +184,7 @@ onMounted(load)
         v-for="block in filtered"
         :key="block.id"
         class="library-item"
+        :class="{ suspended: block.is_suspended }"
       >
         <div class="library-item-content">
           <p class="library-item-q">{{ block.quiz }}</p>
@@ -166,18 +192,26 @@ onMounted(load)
         </div>
         <div class="library-item-meta">
           <span class="badge" :class="intervalClass(block.interval)">
-            {{ intervalLabel(block.interval) }}
+            {{ block.is_suspended ? '⏸ 已暂停' : intervalLabel(block.interval) }}
           </span>
           <span v-if="difficultyTag(block)" class="badge badge-hard">
             🔥 {{ difficultyTag(block) }}
           </span>
-          <button
-            class="btn btn-danger"
-            :disabled="deleting === block.id"
-            @click="pendingDelete = block.id"
-          >
-            {{ deleting === block.id ? '…' : '删除' }}
-          </button>
+          <div class="library-item-actions">
+            <button class="btn btn-ghost btn-item-action" @click="editingBlock = block">编辑</button>
+            <button
+              class="btn btn-ghost btn-item-action"
+              :disabled="toggling === block.id"
+              @click="toggleSuspend(block)"
+            >{{ block.is_suspended ? '恢复' : '暂停' }}</button>
+            <button
+              class="btn btn-danger btn-item-action"
+              :disabled="deleting === block.id"
+              @click="pendingDelete = block.id"
+            >
+              {{ deleting === block.id ? '…' : '删除' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -186,6 +220,12 @@ onMounted(load)
       :message="pendingDelete != null ? '确认删除这张卡片？\n复习进度将一并删除，此操作不可撤销。' : null"
       @confirm="confirmDelete"
       @cancel="pendingDelete = null"
+    />
+
+    <EditCardModal
+      :block="editingBlock"
+      @saved="onCardSaved"
+      @cancel="editingBlock = null"
     />
 
   </div>
@@ -278,6 +318,20 @@ onMounted(load)
   align-items: flex-end;
   gap: var(--space-sm);
   flex-shrink: 0;
+}
+
+.library-item.suspended .library-item-content {
+  opacity: 0.45;
+}
+
+.library-item-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.btn-item-action {
+  font-size: var(--text-micro);
+  padding: 4px 8px;
 }
 
 /* Badge variants */

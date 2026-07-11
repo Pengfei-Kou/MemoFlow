@@ -262,6 +262,13 @@ export interface TodaySummary {
   reviewed: number
   again: number
   retention: number | null
+  streak: number
+}
+
+export function undoReview(blockId: number) {
+  return request<{ block_id: number; message: string }>(`/review/${blockId}/undo`, {
+    method: 'POST',
+  })
 }
 
 export function fetchTodaySummary(deckId?: number | null) {

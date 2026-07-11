@@ -162,6 +162,7 @@ class TodaySummaryResponse(BaseModel):
     reviewed: int  # 今日已复习次数（不含历史回填）
     again: int  # 其中评"忘了"的次数
     retention: Optional[float] = None  # 记住率 = 1 - again/reviewed；无复习时为 None
+    streak: int = 0  # 连续学习天数（全局，今天未复习不断签）
 
 
 class DeckResponse(BaseModel):
