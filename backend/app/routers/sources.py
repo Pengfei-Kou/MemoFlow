@@ -16,6 +16,7 @@ from app.database import get_session
 from app.schemas import (
     SourceImportRequest,
     SourceImportResponse,
+    SourcePreviewResponse,
     SourceListItem,
     SourceDetailResponse,
     MessageResponse,
@@ -23,10 +24,24 @@ from app.schemas import (
     MarkdownImportResponse,
 )
 from app.crud import get_all_sources, get_source_by_id, delete_source
-from app.services.import_service import import_text, import_markdown
+from app.services.import_service import import_text, import_markdown, preview_text
 from app.services.url_fetcher import fetch_url_text
 
 router = APIRouter(prefix="/api/sources", tags=["Sources"])
+
+
+@router.post("/preview", response_model=SourcePreviewResponse)
+def preview_source(
+    req: SourceImportRequest,
+    session: Session = Depends(get_session),
+):
+    """LLM 拆解预览（不入库）：返回卡片候选，供编辑/剔除后走 /import 确认入库"""
+    try:
+        return preview_text(session, req)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("/import", response_model=SourceImportResponse)

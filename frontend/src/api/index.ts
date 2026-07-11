@@ -100,6 +100,7 @@ export interface ReviewSubmitResponse {
   new_ease_factor: number
   next_review: string
   message: string
+  leech?: boolean  // 水蛭卡：反复忘记，建议编辑或暂停
 }
 
 export interface BatchReviewSubmitResponse {
@@ -191,11 +192,53 @@ export function submitBatchReview(blockIds: number[], overallQuality: number) {
 
 // ─── Import ───────────────────────────────────────────────
 
-export function importSource(text: string, title?: string, deckId?: number | null) {
+export interface CardCandidate {
+  content: string
+  quiz: string
+}
+
+export interface SourcePreviewResponse {
+  title: string
+  deck_id: number | null
+  cards: CardCandidate[]
+  warning: string | null
+}
+
+/** LLM 拆解预览（不入库），供编辑/剔除后确认导入 */
+export function previewSource(text: string, title?: string, deckId?: number | null) {
+  return request<SourcePreviewResponse>('/sources/preview', {
+    method: 'POST',
+    body: JSON.stringify({ text, title: title || undefined, deck_id: deckId ?? undefined }),
+  })
+}
+
+export function importSource(
+  text: string,
+  title?: string,
+  deckId?: number | null,
+  cards?: CardCandidate[],  // 预览确认后的卡片；提供时后端跳过 LLM
+) {
   return request<SourceImportResponse>('/sources/import', {
     method: 'POST',
-    body: JSON.stringify({ text, title: title || undefined, source_type: 'text', deck_id: deckId ?? undefined }),
+    body: JSON.stringify({ text, title: title || undefined, source_type: 'text', deck_id: deckId ?? undefined, cards }),
   })
+}
+
+export interface BlockContextItem {
+  id: number
+  sequence_number: number
+  content: string
+  quiz: string
+  is_current: boolean
+}
+
+export function fetchBlockContext(blockId: number, radius = 2) {
+  return request<BlockContextItem[]>(`/blocks/${blockId}/context?radius=${radius}`)
+}
+
+/** 水蛭卡清单 {block_id: 忘记次数} */
+export function fetchLeeches() {
+  return request<Record<string, number>>('/stats/leeches')
 }
 
 export function importMarkdownFile(file: File, deckId: number) {

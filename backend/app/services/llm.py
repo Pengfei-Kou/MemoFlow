@@ -31,24 +31,81 @@ def _get_client() -> OpenAI:
     return _client
 
 
+# 结构化输出 Schema：强约束 {"cards": [{content, quiz}]}，比裸 json_object 更稳
+_CARDS_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "flashcards",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {"type": "string"},
+                            "quiz": {"type": "string"},
+                        },
+                        "required": ["content", "quiz"],
+                    },
+                }
+            },
+            "required": ["cards"],
+        },
+    },
+}
+
+# 端点不支持 json_schema 时（旧网关/模型）退回 json_object，只探测一次
+_schema_unsupported = False
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=15),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+    retry=retry_if_exception_type(
+        (ConnectionError, TimeoutError, OSError, json.JSONDecodeError)
+    ),
     before_sleep=lambda state: logger.warning(
         f"LLM 调用失败（第 {state.attempt_number} 次），{state.outcome.exception()!r}，正在重试..."
     ),
 )
-def _call_llm(prompt: str) -> str | None:
-    """带重试的 LLM API 调用，返回原始 content 字符串"""
+def _call_llm(prompt: str):
+    """带重试的 LLM API 调用（含坏 JSON 重试），返回解析后的 JSON 对象"""
+    global _schema_unsupported
     client = _get_client()
-    response = client.chat.completions.create(
-        model=settings.model_name,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-        response_format={"type": "json_object"},
+
+    response_format = (
+        {"type": "json_object"} if _schema_unsupported else _CARDS_RESPONSE_FORMAT
     )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model=settings.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            response_format=response_format,
+        )
+    except Exception as e:
+        # json_schema 不被支持时降级重试（BadRequest 类错误），网络错误交给 tenacity
+        msg = str(e).lower()
+        if not _schema_unsupported and ("response_format" in msg or "schema" in msg):
+            logger.warning(f"json_schema 不受支持，降级 json_object: {e!r}")
+            _schema_unsupported = True
+            response = client.chat.completions.create(
+                model=settings.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+        else:
+            raise
+
+    content_str = response.choices[0].message.content
+    if not content_str:
+        return None
+    # 清洗（有时模型会多输出 markdown 代码块）；坏 JSON 抛 JSONDecodeError → tenacity 重试
+    clean = content_str.replace("```json", "").replace("```", "").strip()
+    return json.loads(clean)
 
 
 def parse_text_with_llm(raw_text: str, parser_config: dict | None = None) -> list[dict]:
@@ -71,18 +128,16 @@ def parse_text_with_llm(raw_text: str, parser_config: dict | None = None) -> lis
     prompt = build_prompt(parser_config, raw_text)
 
     try:
-        content_str = _call_llm(prompt)
-        if not content_str:
+        data = _call_llm(prompt)
+        if not data:
             logger.warning("LLM 返回内容为空")
             return []
 
-        # 清洗 JSON（有时模型会多输出 markdown 代码块）
-        clean = content_str.replace("```json", "").replace("```", "").strip()
-        data = json.loads(clean)
-
-        # 兼容：返回 list 或包裹在 dict 里的 list
+        # 标准路径：{"cards": [...]}；兼容裸 list 或其它字段名包裹的 list
         blocks_data: list[dict] = []
-        if isinstance(data, list):
+        if isinstance(data, dict) and isinstance(data.get("cards"), list):
+            blocks_data = data["cards"]
+        elif isinstance(data, list):
             blocks_data = data
         elif isinstance(data, dict):
             for value in data.values():

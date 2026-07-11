@@ -329,6 +329,41 @@ def update_block(
     return block
 
 
+def get_block_context(session: Session, block_id: int, radius: int = 2) -> list[Block] | None:
+    """获取卡片在原文中的上下文（同 Source、sequence_number ±radius，含自身）"""
+    block = session.get(Block, block_id)
+    if not block:
+        return None
+    return session.exec(
+        select(Block)
+        .where(Block.source_id == block.source_id)
+        .where(Block.sequence_number >= block.sequence_number - radius)
+        .where(Block.sequence_number <= block.sequence_number + radius)
+        .order_by(Block.sequence_number)
+    ).all()
+
+
+def count_lapses(session: Session, block_id: int) -> int:
+    """该卡片累计"忘了"次数（leech 检测用）"""
+    return session.exec(
+        select(func.count())
+        .select_from(ReviewLog)
+        .where(ReviewLog.block_id == block_id)
+        .where(ReviewLog.quality == 1)
+    ).one()
+
+
+def get_leech_blocks(session: Session, threshold: int) -> dict[int, int]:
+    """所有达到 leech 阈值的卡片 → {block_id: 忘记次数}"""
+    rows = session.exec(
+        select(ReviewLog.block_id, func.count().label("lapses"))
+        .where(ReviewLog.quality == 1)
+        .group_by(ReviewLog.block_id)
+        .having(func.count() >= threshold)
+    ).all()
+    return {row[0]: row[1] for row in rows}
+
+
 def delete_block(session: Session, block_id: int) -> bool:
     """删除单张卡片"""
     block = session.get(Block, block_id)

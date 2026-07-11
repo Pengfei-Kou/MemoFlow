@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field
 # 请求模型 (Request)
 # ============================================================
 
+class CardCandidate(BaseModel):
+    """一张待入库的卡片（预览确认流中用户可编辑/剔除）"""
+    content: str = Field(..., min_length=1, description="原句（答案）")
+    quiz: str = Field(..., min_length=1, description="提示（问题）")
+
+
 class SourceImportRequest(BaseModel):
     """导入新内容的请求体"""
     text: str = Field(..., min_length=10, description="待拆解的原始文本")
@@ -21,6 +27,10 @@ class SourceImportRequest(BaseModel):
     source_type: str = Field(default="text", description="来源类型: text / url / file")
     url: Optional[str] = Field(default=None, description="原始 URL（如果从网页导入）")
     deck_id: Optional[int] = Field(default=None, description="所属 Deck ID；未传则分配到 Default Deck")
+    cards: Optional[list[CardCandidate]] = Field(
+        default=None,
+        description="预览确认后的卡片列表；提供时跳过 LLM 拆解直接入库",
+    )
 
 
 class ReviewRequest(BaseModel):
@@ -110,6 +120,23 @@ class SourceDetailResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SourcePreviewResponse(BaseModel):
+    """LLM 拆解预览（未入库）"""
+    title: str
+    deck_id: Optional[int] = None
+    cards: list[CardCandidate]
+    warning: Optional[str] = None
+
+
+class BlockContextItem(BaseModel):
+    """上下文回溯中的一句"""
+    id: int
+    sequence_number: int
+    content: str
+    quiz: str
+    is_current: bool = False
+
+
 class SourceImportResponse(BaseModel):
     """导入成功后的响应"""
     source_id: int
@@ -138,6 +165,7 @@ class ReviewSubmitResponse(BaseModel):
     new_ease_factor: float
     next_review: datetime
     message: str
+    leech: bool = False  # 累计忘记次数达到阈值（水蛭卡），建议编辑改写或暂停
 
 class BatchReviewSubmitResponse(BaseModel):
     """批量提交打分后的响应"""

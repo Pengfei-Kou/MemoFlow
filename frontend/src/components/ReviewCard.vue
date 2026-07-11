@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { Block } from '../api'
+import { fetchBlockContext, type Block, type BlockContextItem } from '../api'
 
 const props = defineProps<{
   card: Block
@@ -65,6 +65,28 @@ function toggleNote(idx: number) {
   else next.add(idx)
   revealedNotes.value = next
 }
+
+// 上下文回溯：展开该句在原文中的前后句
+const contextItems = ref<BlockContextItem[] | null>(null)
+const contextLoading = ref(false)
+
+watch(
+  () => props.card.id,
+  () => (contextItems.value = null)
+)
+
+async function toggleContext() {
+  if (contextItems.value) {
+    contextItems.value = null
+    return
+  }
+  contextLoading.value = true
+  try {
+    contextItems.value = await fetchBlockContext(props.card.id)
+  } catch { /* 静默失败，不打断复习 */ } finally {
+    contextLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -105,6 +127,17 @@ function toggleNote(idx: number) {
           <button class="btn-speak" @click.stop="speak(card.content)" title="朗读句子">🔊</button>
           <button class="btn-speak" @click.stop="emit('edit')" title="编辑卡片">✏️</button>
         </div>
+
+        <!-- 上下文回溯 -->
+        <button class="context-toggle" @click.stop="toggleContext" :disabled="contextLoading">
+          {{ contextItems ? '▴ 收起上下文' : '▾ 查看上下文' }}
+        </button>
+        <ul v-if="contextItems" class="context-list">
+          <li v-for="c in contextItems" :key="c.id" class="context-item" :class="{ current: c.is_current }">
+            <span class="context-seq">#{{ c.sequence_number }}</span>
+            <span>{{ c.content }}</span>
+          </li>
+        </ul>
 
         <!-- Notes Section -->
         <div v-if="card.notes && card.notes.length > 0" class="review-notes-section">
@@ -227,6 +260,50 @@ function toggleNote(idx: number) {
   display: inline-flex;
   align-items: center;
   margin-top: 4px;
+}
+
+/* ─── 上下文回溯 ────────────────────────────────────────── */
+.context-toggle {
+  background: transparent;
+  border: none;
+  color: var(--color-on-dark-faint);
+  font-size: var(--text-micro);
+  cursor: pointer;
+  padding: 0;
+  margin-top: var(--space-sm);
+  text-align: left;
+  transition: color 0.2s ease;
+  width: fit-content;
+}
+.context-toggle:hover {
+  color: var(--color-surface-violet);
+}
+
+.context-list {
+  list-style: none;
+  padding: var(--space-md);
+  margin-top: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+.context-item {
+  display: flex;
+  gap: var(--space-sm);
+  font-size: var(--text-caption);
+  color: var(--color-on-dark-mute);
+  line-height: 1.5;
+}
+.context-item.current {
+  color: var(--color-surface-violet);
+}
+.context-seq {
+  opacity: 0.5;
+  flex-shrink: 0;
 }
 
 /* ─── Notes ────────────────────────────────────────────── */

@@ -12,7 +12,8 @@ from sqlmodel import Session
 
 from app.database import get_session
 from app.schemas import StatsResponse, TodaySummaryResponse
-from app.crud import get_stats, get_review_history, get_today_summary, get_deck_source_ids
+from app.crud import get_stats, get_review_history, get_today_summary, get_deck_source_ids, get_leech_blocks
+from app.config import settings
 
 router = APIRouter(prefix="/api/stats", tags=["Stats"])
 
@@ -43,6 +44,12 @@ def get_today(
         source_ids = get_deck_source_ids(session, deck_id, include_children)
 
     return get_today_summary(session, source_ids=source_ids)
+
+
+@router.get("/leeches")
+def get_leeches(session: Session = Depends(get_session)):
+    """水蛭卡清单：累计忘记次数 >= 阈值的卡片 {block_id: lapses}"""
+    return get_leech_blocks(session, settings.leech_threshold)
 
 
 @router.get("/history")

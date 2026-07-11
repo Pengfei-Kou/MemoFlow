@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
-import { fetchBlocks, deleteBlock, updateBlock, type Block } from '../api'
+import { fetchBlocks, deleteBlock, updateBlock, fetchLeeches, type Block } from '../api'
 import { useDeckStore } from '../stores/deck'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
@@ -32,11 +32,18 @@ function blockStatus(b: Block): StatusFilter {
   return 'learning'
 }
 
+const leeches = ref<Record<string, number>>({})
+
 async function load() {
   loading.value = true
   error.value   = ''
   try {
-    blocks.value = await fetchBlocks({ deck_id: deckStore.selectedDeckId, limit: 5000 })
+    const [blockList, leechMap] = await Promise.all([
+      fetchBlocks({ deck_id: deckStore.selectedDeckId, limit: 5000 }),
+      fetchLeeches().catch(() => ({})),
+    ])
+    blocks.value = blockList
+    leeches.value = leechMap
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -197,6 +204,9 @@ onMounted(load)
           <span v-if="difficultyTag(block)" class="badge badge-hard">
             🔥 {{ difficultyTag(block) }}
           </span>
+          <span v-if="leeches[block.id]" class="badge badge-leech" title="反复忘记，建议编辑改写或暂停">
+            🧟 忘 {{ leeches[block.id] }} 次
+          </span>
           <div class="library-item-actions">
             <button class="btn btn-ghost btn-item-action" @click="editingBlock = block">编辑</button>
             <button
@@ -339,4 +349,5 @@ onMounted(load)
 .badge-mastered { color: #4db6b6; border-color: rgba(77,182,182,0.4); }
 .badge-learning { color: var(--color-on-dark-mute); }
 .badge-hard     { color: #e5a373; border-color: rgba(229,163,115,0.4); }
+.badge-leech    { color: #e57373; border-color: rgba(229,115,115,0.4); }
 </style>

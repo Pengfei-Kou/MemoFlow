@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     timezone: str = "America/Toronto"
     day_rollover_hour: int = 4
 
+    # Leech（水蛭卡）：累计"忘了"达到该次数时提示编辑改写或暂停
+    leech_threshold: int = 5
+
 
 # 单例
 settings = Settings()

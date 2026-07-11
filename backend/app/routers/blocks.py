@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
 from app.database import get_session
-from app.schemas import BlockResponse, BlockUpdateRequest, MessageResponse
-from app.crud import get_blocks, get_block_by_id, update_block, delete_block
+from app.schemas import BlockResponse, BlockUpdateRequest, BlockContextItem, MessageResponse
+from app.crud import get_blocks, get_block_by_id, update_block, delete_block, get_block_context
 
 router = APIRouter(prefix="/api/blocks", tags=["Blocks"])
 
@@ -36,6 +36,25 @@ def get_block(block_id: int, session: Session = Depends(get_session)):
     if not block:
         raise HTTPException(status_code=404, detail="卡片不存在")
     return block
+
+
+@router.get("/{block_id}/context", response_model=list[BlockContextItem])
+def block_context(
+    block_id: int,
+    radius: int = Query(default=2, ge=1, le=5),
+    session: Session = Depends(get_session),
+):
+    """上下文回溯：返回该句在原文中的前后句（含自身，is_current 标记）"""
+    blocks = get_block_context(session, block_id, radius)
+    if blocks is None:
+        raise HTTPException(status_code=404, detail="卡片不存在")
+    return [
+        BlockContextItem(
+            id=b.id, sequence_number=b.sequence_number,
+            content=b.content, quiz=b.quiz, is_current=(b.id == block_id),
+        )
+        for b in blocks
+    ]
 
 
 @router.put("/{block_id}", response_model=BlockResponse)

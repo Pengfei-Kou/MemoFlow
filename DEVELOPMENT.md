@@ -321,6 +321,8 @@ cd backend
 | 方向 | 说明 |
 |------|------|
 | **跟读练习** | TTS 放句 → 用户跟读 → Web Speech API 识别对比打分；口语场景的下一层能力（Felix 2026-07-11 列入待办，有精力再做） |
+| **服务端高质量 TTS** | edge-tts 预生成 mp3 缓存（真人级发音、可离线），替代浏览器 TTS（Felix 2026-07-11 列入待办） |
+| **语义去重扫描** | 用户手动触发：embedding 全库扫描 → 相似卡片对预览 → 逐对选择合并/编辑/忽略（忽略记录去重不再报）。embedding 存 Block 预留字段、增量更新（Felix 2026-07-11 认可方向，设计见此行） |
 | **FSRS 参数个性化** | ReviewLog 攒 ~1000 条评分后跑 optimizer，结果填 `FSRS_PARAMETERS` 环境变量即生效（钩子已就位，见 config.py） |
 | **多设备同步** | SQLite → PostgreSQL + 用户系统 |
 | **离线 PWA** | Service Worker 缓存，地铁/无网络环境下复习 |

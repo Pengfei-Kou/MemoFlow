@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { importSource, fetchUrlPreview, type Block, type UrlPreviewResponse } from '../api'
+import { previewSource, importSource, fetchUrlPreview, type Block, type UrlPreviewResponse, type CardCandidate } from '../api'
 import { useDeckStore } from '../stores/deck'
 import DeckSelector from './DeckSelector.vue'
 import ImportResultCard from './ImportResultCard.vue'
+import ImportPreviewList from './ImportPreviewList.vue'
 
 const deckStore = useDeckStore()
 
@@ -14,6 +15,7 @@ const urlImporting = ref(false)
 const urlError     = ref('')
 const urlPreview   = ref<UrlPreviewResponse | null>(null)
 const urlResult    = ref<{ title: string; blocks: Block[]; deckId: number | null; warning: string | null } | null>(null)
+const cardPreview  = ref<{ title: string; cards: CardCandidate[] } | null>(null)
 
 async function handleUrlFetch() {
   const u = urlInput.value.trim()
@@ -40,30 +42,51 @@ async function handleUrlImport() {
   urlImporting.value = true
   urlError.value = ''
   try {
-    const data = await importSource(
+    const data = await previewSource(
       urlPreview.value.text,
       urlPreview.value.title || undefined,
       urlDeckId.value,
     )
-    urlResult.value = { title: data.title, blocks: data.blocks, deckId: data.deck_id, warning: data.warning ?? null }
+    cardPreview.value = { title: data.title, cards: data.cards }
   } catch (e: unknown) {
-    urlError.value = e instanceof Error ? e.message : '导入失败'
+    urlError.value = e instanceof Error ? e.message : '拆解失败'
+  } finally {
+    urlImporting.value = false
+  }
+}
+
+async function handleConfirm(cards: CardCandidate[]) {
+  if (!urlPreview.value) return
+  urlImporting.value = true
+  urlError.value = ''
+  try {
+    const data = await importSource(
+      urlPreview.value.text,
+      urlPreview.value.title || undefined,
+      urlDeckId.value,
+      cards,
+    )
+    urlResult.value = { title: data.title, blocks: data.blocks, deckId: data.deck_id, warning: data.warning ?? null }
+    cardPreview.value = null
+  } catch (e: unknown) {
+    urlError.value = e instanceof Error ? e.message : '入库失败'
   } finally {
     urlImporting.value = false
   }
 }
 
 function resetUrl() {
-  urlInput.value   = ''
-  urlPreview.value = null
-  urlResult.value  = null
-  urlError.value   = ''
+  urlInput.value    = ''
+  urlPreview.value  = null
+  urlResult.value   = null
+  cardPreview.value = null
+  urlError.value    = ''
 }
 </script>
 
 <template>
   <!-- URL import form -->
-  <div v-if="!urlResult" class="card import-card mt-xl">
+  <div v-if="!urlResult && !cardPreview" class="card import-card mt-xl">
 
     <!-- URL input -->
     <div class="form-group">
@@ -137,9 +160,21 @@ function resetUrl() {
     </p>
   </div>
 
+  <!-- Card preview & confirm -->
+  <template v-else-if="cardPreview">
+    <p v-if="urlError" class="import-error mt-lg">⚠️ {{ urlError }}</p>
+    <ImportPreviewList
+      :cards="cardPreview.cards"
+      :title="cardPreview.title"
+      :submitting="urlImporting"
+      @confirm="handleConfirm"
+      @cancel="cardPreview = null"
+    />
+  </template>
+
   <!-- Result -->
   <ImportResultCard
-    v-else
+    v-else-if="urlResult"
     class="mt-xl"
     :title="urlResult.title"
     :blocks="urlResult.blocks"

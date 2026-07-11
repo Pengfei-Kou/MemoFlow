@@ -325,3 +325,71 @@ class TestStreak:
         block_id = c.get("/api/review/next").json()["block"]["id"]
         c.post(f"/api/review/{block_id}", json={"quality": 4})
         assert c.get("/api/stats/today").json()["streak"] == 1
+
+
+class TestPreviewConfirmImport:
+    """预览确认流：cards 提供时跳过 LLM 直接入库."""
+
+    def test_import_with_confirmed_cards(self, client):
+        c, _ = client
+        deck_id = c.post("/api/decks", json={"name": "PC"}).json()["id"]
+        resp = c.post("/api/sources/import", json={
+            "text": "Practice makes perfect. Some other text here.",
+            "title": "confirmed",
+            "deck_id": deck_id,
+            "cards": [
+                {"content": "Practice makes perfect.", "quiz": "熟能生巧"},
+                {"content": "Stay hungry.", "quiz": "保持饥渴"},
+            ],
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["block_count"] == 2
+        assert data["blocks"][0]["quiz"] == "熟能生巧"
+
+    def test_import_with_empty_cards_rejected(self, client):
+        c, _ = client
+        deck_id = c.post("/api/decks", json={"name": "PC2"}).json()["id"]
+        resp = c.post("/api/sources/import", json={
+            "text": "Some text at least ten chars.",
+            "deck_id": deck_id,
+            "cards": [{"content": "  ", "quiz": "x"}],
+        })
+        assert resp.status_code in (422,)
+
+
+class TestBlockContext:
+    """上下文回溯端点."""
+
+    def test_context_marks_current(self, client):
+        c, engine = client
+        _seed_data(engine)
+        blocks = c.get("/api/blocks").json()
+        target = blocks[1]["id"]
+        ctx = c.get(f"/api/blocks/{target}/context?radius=2").json()
+        assert len(ctx) == 2  # seed 只有 2 张卡
+        current = [x for x in ctx if x["is_current"]]
+        assert len(current) == 1 and current[0]["id"] == target
+
+    def test_context_missing_block(self, client):
+        c, _ = client
+        assert c.get("/api/blocks/99999/context").status_code == 404
+
+
+class TestLeech:
+    """Leech 检测：累计忘记达到阈值时提示."""
+
+    def test_leech_flag_after_threshold(self, client, monkeypatch):
+        from app.config import settings
+        monkeypatch.setattr(settings, "leech_threshold", 3)
+        c, engine = client
+        _seed_data(engine)
+        block_id = c.get("/api/blocks").json()[0]["id"]
+
+        for i in range(3):
+            resp = c.post(f"/api/review/{block_id}", json={"quality": 1})
+        assert resp.json()["leech"] is True
+        assert "🧟" in resp.json()["message"]
+
+        leeches = c.get("/api/stats/leeches").json()
+        assert str(block_id) in leeches or block_id in {int(k) for k in leeches}

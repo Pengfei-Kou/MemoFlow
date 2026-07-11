@@ -20,6 +20,7 @@ from app.crud import (
     get_due_source_batch, get_new_source_batch, submit_batch_review as crud_submit_batch_review,
     count_due_blocks, count_new_blocks, count_today_reviewed, count_today_new,
     get_deck_by_id, get_deck_source_ids, undo_last_review as crud_undo_last_review,
+    count_lapses,
 )
 from app.models import Source
 from app.schemas import (
@@ -164,16 +165,26 @@ def submit_single_review(session: Session, block_id: int, quality: int) -> Revie
     if not block:
         return None
 
+    # Leech 检测：评"忘了"时看累计忘记次数是否达阈值
+    leech = False
+    if quality == 1:
+        leech = count_lapses(session, block_id) >= settings.leech_threshold
+
     session.commit()
     session.refresh(block)
     label = QUALITY_LABELS.get(quality, str(quality))
+
+    message = f"评分「{label}」→ 下次复习 {_humanize_next_review(block.next_review)}"
+    if leech:
+        message += "｜🧟 这张卡反复忘记，建议编辑改写或暂停"
 
     return ReviewSubmitResponse(
         block_id=block.id,
         new_interval=block.interval,
         new_ease_factor=block.ease_factor,
         next_review=block.next_review,
-        message=f"评分「{label}」→ 下次复习 {_humanize_next_review(block.next_review)}",
+        message=message,
+        leech=leech,
     )
 
 
