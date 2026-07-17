@@ -92,6 +92,7 @@ export interface ReviewNextResponse {
   source_title: string | null
   deck_name: string | null
   review_mode: string
+  predicted_intervals: Record<string, string> | null
 }
 
 export interface ReviewSubmitResponse {
@@ -171,9 +172,15 @@ export function deleteDeck(deckId: number) {
 
 // ─── Review ───────────────────────────────────────────────
 
-export function fetchNextCard(deckId?: number | null) {
-  const q = deckId != null ? `?deck_id=${deckId}&include_children=true` : ''
-  return request<ReviewNextResponse>(`/review/next${q}`)
+export function fetchNextCard(deckId?: number | null, excludeBlockId?: number) {
+  const params = new URLSearchParams()
+  if (deckId != null) {
+    params.set('deck_id', String(deckId))
+    params.set('include_children', 'true')
+  }
+  if (excludeBlockId != null) params.set('exclude_block_id', String(excludeBlockId))
+  const q = params.toString()
+  return request<ReviewNextResponse>(`/review/next${q ? `?${q}` : ''}`)
 }
 
 export function submitReview(blockId: number, quality: number) {
@@ -282,7 +289,7 @@ export function deleteBlock(blockId: number) {
   })
 }
 
-export function updateBlock(blockId: number, data: { content?: string; quiz?: string; is_suspended?: boolean }) {
+export function updateBlock(blockId: number, data: { content?: string; quiz?: string; is_suspended?: boolean; notes?: { zh: string; en: string }[] }) {
   return request<Block>(`/blocks/${blockId}`, {
     method: 'PUT',
     body: JSON.stringify(data),

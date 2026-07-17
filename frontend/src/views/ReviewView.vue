@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   fetchNextCard, submitReview, submitBatchReview, fetchTodaySummary, undoReview,
-  type Block, type TodaySummary,
+  type Block, type TodaySummary, type ReviewNextResponse,
 } from '../api'
 import { useDeckStore } from '../stores/deck'
 import { useStatsStore } from '../stores/stats'
@@ -31,6 +31,17 @@ const reviewMode     = ref<'card' | 'passage'>('card')
 const batchCards     = ref<Block[]>([])
 const batchIndex     = ref(0)
 const batchQualities = ref<number[]>([])
+
+// 文章切换提示：本次会话内跨 Source 时给个轻提醒
+const prevSourceId    = ref<number | null>(null)
+const articleSwitched = ref(false)
+
+// 评分按钮上的预测间隔（仅单卡模式，随 /review/next 返回）
+const predictedIntervals = ref<Record<string, string> | null>(null)
+
+// 预取的下一张卡：评分后立即切换，消除切卡等待
+const nextData = ref<ReviewNextResponse | null>(null)
+let loadGen = 0 // 换 Deck / 撤销等强制重载时递增，作废在途预取
 
 // 翻面自动朗读（记 localStorage）
 const autoSpeak = ref(localStorage.getItem('memoflow-autospeak') === '1')
@@ -72,10 +83,10 @@ async function handleUndo() {
 const editingBlock = ref<Block | null>(null)
 function onCardSaved(updated: Block) {
   if (card.value && card.value.id === updated.id) {
-    card.value = { ...card.value, quiz: updated.quiz, content: updated.content }
+    card.value = { ...card.value, quiz: updated.quiz, content: updated.content, notes: updated.notes }
   }
   const idx = batchCards.value.findIndex(b => b.id === updated.id)
-  if (idx >= 0) batchCards.value[idx] = { ...batchCards.value[idx], quiz: updated.quiz, content: updated.content }
+  if (idx >= 0) batchCards.value[idx] = { ...batchCards.value[idx], quiz: updated.quiz, content: updated.content, notes: updated.notes }
   editingBlock.value = null
 }
 
@@ -88,7 +99,54 @@ const ratings = [
 ] as const
 
 // ─── Load next card ───────────────────────────────────────
+function applyData(data: ReviewNextResponse) {
+  flipped.value = false
+  submitting.value = false
+
+  if (!data.block && (!data.batch || data.batch.length === 0)) {
+    done.value = true
+    card.value = null
+    batchCards.value = []
+    articleSwitched.value = false
+    return
+  }
+
+  remaining.value = data.remaining
+  isNew.value   = data.is_new
+  sourceTitle.value = data.source_title ?? null
+  deckName.value    = data.deck_name ?? null
+  predictedIntervals.value = data.predicted_intervals ?? null
+  done.value    = false
+
+  if (data.review_mode === 'passage' && data.batch && data.batch.length > 0) {
+    reviewMode.value = 'passage'
+    batchCards.value = data.batch
+    batchIndex.value = 0
+    batchQualities.value = []
+    card.value = batchCards.value[0]
+  } else {
+    reviewMode.value = 'card'
+    batchCards.value = []
+    card.value = data.block
+  }
+
+  const sid = card.value?.source_id ?? null
+  articleSwitched.value = prevSourceId.value !== null && sid !== null && sid !== prevSourceId.value
+  if (sid !== null) prevSourceId.value = sid
+}
+
+/** 后台预取下一张（排除当前卡）；只在单卡模式下有意义 */
+function prefetch() {
+  if (done.value || reviewMode.value === 'passage' || !card.value) return
+  const gen = loadGen
+  fetchNextCard(deckStore.selectedDeckId, card.value.id)
+    .then((d) => { if (gen === loadGen) nextData.value = d })
+    .catch(() => { /* 预取失败无妨，评分时退回同步路径 */ })
+}
+
 async function loadNext() {
+  const gen = ++loadGen
+  nextData.value = null
   loading.value = true
   error.value   = ''
   flipped.value = false
@@ -98,34 +156,15 @@ async function loadNext() {
       fetchNextCard(deckStore.selectedDeckId),
       fetchTodaySummary(deckStore.selectedDeckId).catch(() => null),
     ])
+    if (gen !== loadGen) return
     today.value = summary
-    if (!data.block && (!data.batch || data.batch.length === 0)) {
-      done.value = true
-      card.value = null
-      batchCards.value = []
-    } else {
-      remaining.value = data.remaining
-      isNew.value   = data.is_new
-      sourceTitle.value = data.source_title ?? null
-      deckName.value    = data.deck_name ?? null
-      done.value    = false
-
-      if (data.review_mode === 'passage' && data.batch && data.batch.length > 0) {
-        reviewMode.value = 'passage'
-        batchCards.value = data.batch
-        batchIndex.value = 0
-        batchQualities.value = []
-        card.value = batchCards.value[0]
-      } else {
-        reviewMode.value = 'card'
-        batchCards.value = []
-        card.value = data.block
-      }
-    }
+    applyData(data)
+    prefetch()
   } catch (e: unknown) {
+    if (gen !== loadGen) return
     error.value = e instanceof Error ? e.message : '连接失败，请确认后端已启动'
   } finally {
-    loading.value = false
+    if (gen === loadGen) loading.value = false
   }
 }
 
@@ -173,8 +212,30 @@ async function rate(quality: number, label: string) {
       }
     }
   } else {
-    submitting.value = true
     const ratedId = card.value.id
+    const next = nextData.value
+
+    if (next && (next.block || (next.batch && next.batch.length > 0))) {
+      // 乐观切卡：立即显示预取好的下一张，评分在后台提交（成功后再预取下下张）
+      nextData.value = null
+      applyData(next)
+      submitReview(ratedId, quality)
+        .then((res) => {
+          statsStore.invalidate()
+          showToast(`✓ ${label} — ${res.message.split('→ ')[1] ?? res.message}`, ratedId)
+          fetchTodaySummary(deckStore.selectedDeckId).then((s) => { today.value = s }).catch(() => {})
+          prefetch()
+        })
+        .catch(() => {
+          // 提交失败该卡仍留在队列里，之后会重新出现，不打断当前复习
+          showToast('⚠️ 评分提交失败，这张卡稍后会重新出现')
+        })
+      return
+    }
+
+    // 预取未就绪，或预取显示队列见底（🎉 完成页必须由权威查询判定，
+    // 因为 FSRS 学习步可能让刚评的卡几分钟后就再次到期）：走同步路径
+    submitting.value = true
     try {
       const res = await submitReview(ratedId, quality)
       statsStore.invalidate()
@@ -333,22 +394,27 @@ onUnmounted(() => {
     <!-- Active card -->
     <div v-else-if="card" class="review-active">
 
-      <!-- Top row: meta + progress -->
-      <div class="review-meta flex items-center justify-between">
-        <div class="flex items-center gap-md">
-          <span class="badge">📖 {{ cardLabel }}</span>
-          <span v-if="isNew" class="badge" style="color: var(--color-surface-violet); border-color: var(--color-surface-violet)">新卡片</span>
-        </div>
-        <div class="flex items-center gap-md">
+      <!-- 信息区：第一行 = 卡片身份，第二行 = 范围 + 进度 -->
+      <div class="review-meta">
+        <div class="review-meta-main">
+          <span class="badge badge-truncate" :title="cardLabel">📖 {{ cardLabel }}</span>
+          <span v-if="isNew" class="badge badge-new">新卡片</span>
           <button
             class="review-autospeak-btn"
             :class="{ on: autoSpeak }"
             @click="toggleAutoSpeak"
             :title="autoSpeak ? '翻面自动朗读：开' : '翻面自动朗读：关'"
           >🔊 {{ autoSpeak ? '自动' : '手动' }}</button>
-          <span class="review-deck-scope text-xs desktop-only">🗂️ {{ currentDeckLabel }}</span>
-          <span class="text-faint text-xs">{{ progressLabel }}</span>
         </div>
+        <div class="review-meta-sub">
+          <span class="review-deck-scope text-xs desktop-only">🗂️ {{ currentDeckLabel }}</span>
+          <span class="text-faint text-xs review-progress-label">{{ progressLabel }}</span>
+        </div>
+      </div>
+
+      <!-- 文章切换提示 -->
+      <div v-if="articleSwitched" class="article-switch-banner mt-lg">
+        📄 上一篇已读完 · 开始新文章<template v-if="sourceTitle">《{{ sourceTitle }}》</template>
       </div>
 
       <!-- Card component -->
@@ -360,6 +426,7 @@ onUnmounted(() => {
         :show-undo="reviewMode === 'passage' && batchIndex > 0"
         :last-rating-label="lastRatingLabel"
         :auto-speak="autoSpeak"
+        :predicted-intervals="reviewMode === 'card' ? predictedIntervals : null"
         @flip="flipped = true"
         @rate="rate"
         @undo="undo"
@@ -491,7 +558,20 @@ onUnmounted(() => {
   width: 100%;
 }
 
+.article-switch-banner {
+  text-align: center;
+  font-size: var(--text-caption);
+  color: var(--color-surface-violet);
+  border: 1px dashed var(--color-surface-violet);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  opacity: 0.85;
+}
+
 .review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
   margin-bottom: var(--space-lg);
   opacity: 0.5;
   transition: opacity 0.3s ease;
@@ -500,7 +580,40 @@ onUnmounted(() => {
   opacity: 1;
 }
 
+.review-meta-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* 来源标签可以很长：允许收缩并省略号截断（覆盖 .badge 的 inline-flex / 不收缩） */
+.badge-truncate {
+  display: block;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-new {
+  color: var(--color-surface-violet);
+  border-color: var(--color-surface-violet);
+}
+
+.review-meta-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+.review-progress-label {
+  margin-left: auto;
+}
+
 .review-autospeak-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   background: transparent;
   border: 1px solid var(--color-hairline-dark);
   border-radius: var(--radius-sm);
@@ -537,6 +650,22 @@ kbd {
   border: 1px solid var(--color-hairline-dark);
   border-radius: var(--radius-xs);
   margin: 0 2px;
+}
+
+/* 窄屏：toast 移到底部操作栏上方居中（顶部会撞状态栏/刘海，且离拇指太远） */
+@media (max-width: 768px) {
+  .review-toast {
+    top: auto;
+    bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom) + 88px);
+    left: var(--space-lg);
+    right: var(--space-lg);
+    width: fit-content;
+    margin: 0 auto;
+  }
+  .toast-enter-from,
+  .toast-leave-to {
+    transform: translateY(8px); /* 从底部方向淡入淡出 */
+  }
 }
 
 /* 触屏：meta 常显、键盘提示无意义 */

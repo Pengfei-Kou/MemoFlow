@@ -70,6 +70,7 @@ def edit_block(
         content=req.content,
         quiz=req.quiz,
         is_suspended=req.is_suspended,
+        notes=req.notes,
     )
     if not block:
         raise HTTPException(status_code=404, detail="卡片不存在")

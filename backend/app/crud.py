@@ -311,8 +311,9 @@ def update_block(
     content: str | None = None,
     quiz: str | None = None,
     is_suspended: bool | None = None,
+    notes: list[dict] | None = None,
 ) -> Block | None:
-    """编辑卡片（只更新传入的字段）"""
+    """编辑卡片（只更新传入的字段；notes 传空列表 = 清空）"""
     block = session.get(Block, block_id)
     if not block:
         return None
@@ -323,6 +324,8 @@ def update_block(
         block.quiz = quiz
     if is_suspended is not None:
         block.is_suspended = is_suspended
+    if notes is not None:
+        block.notes = notes
 
     session.add(block)
     session.flush()
@@ -383,29 +386,45 @@ def get_due_blocks(
     limit: int | None = None,
     source_ids: list[int] | None = None,
     card_order: str = "sequential_then_random",
+    exclude_block_id: int | None = None,
+    due_before: datetime | None = None,
 ) -> list[Block]:
-    """获取今日到期待复习的卡片（排除已暂停的）"""
+    """获取到期待复习的卡片（排除已暂停的）
+
+    exclude_block_id：预取下一张时排除正在展示的卡。
+    due_before：到期判定边界（naive UTC）。默认为逻辑日终点=「今天到期」；
+    传当前时刻则只取真正到期的卡（学习步稍后才到点的卡不算）。
+    """
     if limit is None:
         limit = settings.review_cards_per_session
 
-    _, day_end = local_day_bounds()
+    if due_before is None:
+        _, due_before = local_day_bounds()
     statement = (
         select(Block)
-        .where(Block.next_review < day_end)
+        .where(Block.next_review < due_before)
         .where(Block.is_suspended == False)
     )
 
     if source_ids is not None:
         statement = statement.where(col(Block.source_id).in_(source_ids))
+    if exclude_block_id is not None:
+        statement = statement.where(Block.id != exclude_block_id)
 
     if card_order == "always_sequential":
         statement = statement.order_by(Block.source_id, Block.sequence_number)
-    else:
-        # sequential_then_random 和 always_random 的复习卡都随机
-        statement = statement.order_by(func.random())
+        return session.exec(statement.limit(limit)).all()
 
-    statement = statement.limit(limit)
-    return session.exec(statement).all()
+    if card_order == "always_random":
+        statement = statement.order_by(func.random())
+        return session.exec(statement.limit(limit)).all()
+
+    # 默认档：最危险优先——按 FSRS 预测记住率升序，最可能已遗忘的先复习。
+    # 刚评"忘了"的卡记住率会重置到接近 1，自然排到队尾，不会立刻再出现。
+    blocks = list(session.exec(statement).all())
+    now = datetime.now(timezone.utc)
+    blocks.sort(key=lambda b: fsrs_scheduler.retrievability(b, now))
+    return blocks[:limit]
 
 
 def get_new_blocks(
@@ -413,6 +432,7 @@ def get_new_blocks(
     limit: int | None = None,
     source_ids: list[int] | None = None,
     card_order: str = "sequential_then_random",
+    exclude_block_id: int | None = None,
 ) -> list[Block]:
     """获取从未学习过的新卡片（排除已暂停的）"""
     if limit is None:
@@ -426,6 +446,8 @@ def get_new_blocks(
 
     if source_ids is not None:
         statement = statement.where(col(Block.source_id).in_(source_ids))
+    if exclude_block_id is not None:
+        statement = statement.where(Block.id != exclude_block_id)
 
     if card_order == "always_random":
         statement = statement.order_by(func.random())

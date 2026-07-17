@@ -40,7 +40,7 @@ const STRATEGIES = [
 ]
 
 const CARD_ORDERS = [
-  { value: 'sequential_then_random', label: '新卡顺序 + 复习随机（默认）' },
+  { value: 'sequential_then_random', label: '新卡顺序 + 复习按遗忘风险（默认）' },
   { value: 'always_sequential',      label: '全程按顺序（适合数学推导）' },
   { value: 'always_random',          label: '完全随机（适合词汇卡片）' },
 ]

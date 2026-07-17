@@ -19,6 +19,7 @@ const emit = defineEmits<{
 
 const quiz = ref('')
 const content = ref('')
+const notes = ref<{ zh: string; en: string }[]>([])
 const saving = ref(false)
 const error = ref('')
 
@@ -28,11 +29,20 @@ watch(
     if (b) {
       quiz.value = b.quiz
       content.value = b.content
+      notes.value = (b.notes ?? []).map(n => ({ zh: n.zh, en: n.en }))
       error.value = ''
     }
   },
   { immediate: true }
 )
+
+function addNote() {
+  notes.value.push({ zh: '', en: '' })
+}
+
+function removeNote(idx: number) {
+  notes.value.splice(idx, 1)
+}
 
 async function save() {
   if (!props.block || saving.value) return
@@ -42,6 +52,9 @@ async function save() {
     const updated = await updateBlock(props.block.id, {
       quiz: quiz.value.trim(),
       content: content.value.trim(),
+      notes: notes.value
+        .map(n => ({ zh: n.zh.trim(), en: n.en.trim() }))
+        .filter(n => n.zh || n.en),
     })
     emit('saved', updated)
   } catch (e: unknown) {
@@ -66,6 +79,18 @@ async function save() {
         <div class="edit-field">
           <label class="edit-label" for="edit-content">原句（答案）</label>
           <textarea id="edit-content" v-model="content" class="form-input edit-textarea" rows="3"></textarea>
+        </div>
+
+        <div class="edit-field">
+          <label class="edit-label">附属知识点</label>
+          <div v-for="(note, idx) in notes" :key="idx" class="edit-note-row">
+            <div class="edit-note-inputs">
+              <input v-model="note.zh" class="form-input" placeholder="中文" />
+              <input v-model="note.en" class="form-input" placeholder="English" />
+            </div>
+            <button class="edit-note-del" @click="removeNote(idx)" title="删除这条">✕</button>
+          </div>
+          <button class="btn btn-ghost edit-note-add" @click="addNote">＋ 添加知识点</button>
         </div>
 
         <p v-if="error" class="text-sm" style="color:#e57373">⚠️ {{ error }}</p>
@@ -136,5 +161,39 @@ async function save() {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-md);
+}
+
+.edit-note-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.edit-note-inputs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.edit-note-del {
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-dark-mute);
+  cursor: pointer;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+.edit-note-del:hover {
+  color: #e57373;
+  border-color: #e57373;
+}
+
+.edit-note-add {
+  align-self: flex-start;
+  font-size: var(--text-caption);
+  padding: 4px 10px;
 }
 </style>

@@ -12,6 +12,8 @@ const props = defineProps<{
   lastRatingLabel: string
   /** 翻面时自动朗读答案句 */
   autoSpeak?: boolean
+  /** 四档评分的预测间隔标签（单卡模式，键为 quality 字符串） */
+  predictedIntervals?: Record<string, string> | null
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +77,11 @@ watch(
   () => (contextItems.value = null)
 )
 
+// 正面点卡片任意位置即翻面（不必精确点按钮）
+function onCardClick() {
+  if (!props.flipped) emit('flip')
+}
+
 async function toggleContext() {
   if (contextItems.value) {
     contextItems.value = null
@@ -90,10 +97,15 @@ async function toggleContext() {
 </script>
 
 <template>
-  <div class="card review-card" style="min-height: 340px; position: relative;">
+  <div
+    class="card review-card"
+    :class="{ 'flip-target': !flipped }"
+    style="min-height: 340px; position: relative;"
+    @click="onCardClick"
+  >
     <!-- Undo Button (passage mode) -->
     <div v-if="showUndo" class="review-undo-container flex items-center">
-      <button class="btn btn-ghost text-xs review-undo-btn" @click="emit('undo')" title="快捷键: Backspace">
+      <button class="btn btn-ghost text-xs review-undo-btn" @click.stop="emit('undo')" title="快捷键: Backspace">
         ⬅️ 上一句
       </button>
       <span class="text-faint text-xs ml-sm">
@@ -157,10 +169,15 @@ async function toggleContext() {
             v-for="r in ratings"
             :key="r.quality"
             class="btn review-rating-btn"
-            @click="emit('rate', r.quality, r.label)"
+            @click.stop="emit('rate', r.quality, r.label)"
           >
-            <span class="rating-label">{{ r.label }}</span>
-            <span class="rating-shortcut">[{{ r.shortcut }}]</span>
+            <span class="rating-main">
+              <span class="rating-label">{{ r.label }}</span>
+              <span class="rating-shortcut">[{{ r.shortcut }}]</span>
+            </span>
+            <span v-if="predictedIntervals?.[String(r.quality)]" class="rating-interval">
+              {{ predictedIntervals?.[String(r.quality)] }}
+            </span>
           </button>
         </div>
         <div v-else class="review-submitting flex items-center gap-md mt-xl" style="justify-content: center;">
@@ -364,10 +381,11 @@ async function toggleContext() {
 .review-rating-btn {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-sm);
-  padding: 10px 16px;
+  gap: 2px;
+  padding: 8px 8px;
   background-color: transparent;
   border: 1px solid var(--color-hairline-dark);
   color: var(--color-on-surface);
@@ -375,10 +393,31 @@ async function toggleContext() {
   transition: all 0.2s ease;
 }
 
-.review-rating-btn:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: var(--color-surface-violet);
-  color: var(--color-on-primary);
+.rating-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.rating-interval {
+  font-size: var(--text-micro);
+  opacity: 0.45;
+  line-height: 1;
+}
+
+/* 正面整卡可点：给出手型提示 */
+.review-card.flip-target {
+  cursor: pointer;
+}
+
+/* 只在真实鼠标设备上生效：触屏浏览器会把"最后触点"算作 hover，
+   导致翻牌后触点下方的评分按钮无故高亮 */
+@media (hover: hover) {
+  .review-rating-btn:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-surface-violet);
+    color: var(--color-on-primary);
+  }
 }
 
 .rating-label {
@@ -440,6 +479,16 @@ async function toggleContext() {
   /* 给固定底栏让位，避免卡片内容被盖住 */
   .review-card {
     margin-bottom: 84px;
+  }
+
+  /* 翻牌动画去掉 transform：祖先带 transform 会让 fixed 评分栏
+     改为相对卡片定位，导致评分栏先在卡片中间闪现再跳回屏幕底部 */
+  .card-reveal-enter-active {
+    transition: opacity 0.28s ease;
+  }
+  .card-reveal-enter-from,
+  .card-reveal-enter-to {
+    transform: none;
   }
 }
 

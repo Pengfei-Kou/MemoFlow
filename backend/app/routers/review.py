@@ -28,9 +28,10 @@ def get_next_review_card(
     session: Session = Depends(get_session),
     deck_id: Optional[int] = Query(default=None, description="限定复习范围的 Deck ID"),
     include_children: bool = Query(default=True, description="是否包含子 Deck"),
+    exclude_block_id: Optional[int] = Query(default=None, description="预取时排除正在展示的卡片 ID"),
 ):
     """获取下一张待复习的卡片（优先级：到期复习 > 新卡片）"""
-    result = get_next_review(session, deck_id, include_children)
+    result = get_next_review(session, deck_id, include_children, exclude_block_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Deck 不存在")
     return result

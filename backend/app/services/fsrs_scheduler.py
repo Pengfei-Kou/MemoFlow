@@ -81,6 +81,27 @@ def block_to_card(block: Block) -> Card:
     return Card()  # 全新卡
 
 
+def retrievability(block: Block, now: datetime | None = None) -> float:
+    """当前预测记住率（0~1，越低越危险）。从未复习过的卡按 0 处理。"""
+    if block.last_review is None:
+        return 0.0
+    return _get_scheduler().get_card_retrievability(
+        block_to_card(block), now or datetime.now(timezone.utc)
+    )
+
+
+def predict_intervals(block: Block, now: datetime | None = None) -> dict[int, datetime]:
+    """预演四档评分各自的下次到期时间（不落库），供评分按钮展示"""
+    now = now or datetime.now(timezone.utc)
+    result: dict[int, datetime] = {}
+    for quality, rating in QUALITY_TO_RATING.items():
+        card, _ = _get_scheduler().review_card(
+            block_to_card(block), rating, review_datetime=now
+        )
+        result[quality] = card.due
+    return result
+
+
 def apply_review(block: Block, quality: int, now: datetime | None = None) -> None:
     """对 block 执行一次 FSRS 评分，就地更新调度字段（不落库、不改 last_review）"""
     now = now or datetime.now(timezone.utc)

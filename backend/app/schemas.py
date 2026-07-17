@@ -48,6 +48,7 @@ class BlockUpdateRequest(BaseModel):
     content: Optional[str] = Field(default=None, description="英文原文")
     quiz: Optional[str] = Field(default=None, description="中文提示")
     is_suspended: Optional[bool] = Field(default=None, description="是否暂停复习")
+    notes: Optional[list[dict]] = Field(default=None, description="附属知识点 [{zh, en}]，传空列表清空")
 
 
 class DeckCreateRequest(BaseModel):
@@ -156,6 +157,7 @@ class ReviewNextResponse(BaseModel):
     source_title: Optional[str] = None  # [V3新增] 来源标题
     deck_name: Optional[str] = None     # [V3新增] Deck 名称
     review_mode: str = "card"           # [V3新增] "card" 或 "passage"
+    predicted_intervals: Optional[dict[int, str]] = None  # 四档评分的预测间隔（仅单卡模式）
 
 
 class ReviewSubmitResponse(BaseModel):

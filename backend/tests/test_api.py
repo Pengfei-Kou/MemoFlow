@@ -133,6 +133,51 @@ class TestReviewAPI:
         assert data["block"] is not None
         assert data["is_new"] is True
 
+    def test_next_review_predicted_intervals(self, client):
+        """单卡模式返回四档评分的预测间隔标签。"""
+        c, engine = client
+        _seed_data(engine)
+        data = c.get("/api/review/next").json()
+        assert data["block"] is not None
+        intervals = data["predicted_intervals"]
+        assert intervals is not None
+        assert set(intervals.keys()) == {"1", "3", "4", "5"}
+        assert all(isinstance(v, str) and v for v in intervals.values())
+
+    def test_next_review_exclude_block(self, client):
+        """预取时 exclude_block_id 应跳过正在展示的卡。"""
+        c, engine = client
+        _seed_data(engine)
+        first = c.get("/api/review/next").json()["block"]["id"]
+        data = c.get(f"/api/review/next?exclude_block_id={first}").json()
+        assert data["block"] is not None
+        assert data["block"]["id"] != first
+
+    def test_learning_step_yields_to_new_cards(self, client):
+        """刚评过的卡（学习步未到点）应让位给新卡，不立刻再次出现。"""
+        c, engine = client
+        _seed_data(engine)
+        first = c.get("/api/review/next").json()["block"]["id"]
+        c.post(f"/api/review/{first}", json={"quality": 4})  # 良 → 学习步分钟级
+        data = c.get("/api/review/next").json()
+        assert data["block"] is not None
+        assert data["block"]["id"] != first
+        assert data["is_new"] is True
+
+    def test_learn_ahead_when_no_new_cards(self, client):
+        """新卡耗尽后，提前拉今天稍后到期的学习步卡，而不是显示完成。"""
+        c, engine = client
+        _seed_data(engine)
+        rated = set()
+        for _ in range(2):
+            block_id = c.get("/api/review/next").json()["block"]["id"]
+            c.post(f"/api/review/{block_id}", json={"quality": 4})
+            rated.add(block_id)
+        data = c.get("/api/review/next").json()
+        assert data["block"] is not None
+        assert data["block"]["id"] in rated
+        assert data["is_new"] is False
+
     def test_submit_review(self, client):
         """Submit a review and check schedule updates + review log append."""
         c, engine = client

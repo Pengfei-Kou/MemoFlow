@@ -46,9 +46,13 @@ def _is_english(text: str) -> bool:
 # ── 内容段解析 ─────────────────────────────────────────────
 
 def _clean_markdown_symbols(text: str) -> str:
-    """清理多余的 Markdown 符号，如 ** 和 $$"""
+    """清理多余的 Markdown/LaTeX 符号，如 **、$$、$5\\%$"""
     text = re.sub(r'[*_]{2}', '', text)
     text = re.sub(r'\$\$', '', text)
+    # 内联公式仅限内部无空白（$5\%$、$x$），防止误伤 "costs $5 and $10" 这类真美元
+    text = re.sub(r'\$([^$\s]+)\$', r'\1', text)
+    text = re.sub(r'\\([%$&#_])', r'\1', text)   # LaTeX 转义：\% → %
+
     return text.strip()
 
 def _parse_content_section(lines: list[str]) -> list[dict]:

@@ -22,11 +22,12 @@ from app.crud import (
     get_deck_by_id, get_deck_source_ids, undo_last_review as crud_undo_last_review,
     count_lapses,
 )
-from app.models import Source
+from app.models import Block, Source
 from app.schemas import (
     ReviewNextResponse, ReviewSubmitResponse, BlockResponse,
     BatchReviewSubmitResponse,
 )
+from app.services import fsrs_scheduler
 
 # 统一评分标签（前端只提供 1/3/4/5 四档，SM-2 算法将 <3 视为忘记）
 QUALITY_LABELS: dict[int, str] = {
@@ -50,16 +51,42 @@ def _get_source_and_deck_info(session: Session, source_id: int) -> tuple[str | N
     return source.title, deck_name
 
 
+def _humanize_interval_short(due: datetime, now: datetime) -> str:
+    """预测间隔 → 评分按钮上的短标签（如 10分钟 / 3天 / 2个月）"""
+    minutes = (due - now).total_seconds() / 60
+    if minutes < 90:
+        return f"{max(1, round(minutes))}分钟"
+    if minutes < 60 * 36:
+        return f"{round(minutes / 60)}小时"
+    days = minutes / 1440
+    if days < 60:
+        return f"{round(days)}天"
+    return f"{round(days / 30.4)}个月"
+
+
+def _predict_interval_labels(block: Block) -> dict[int, str] | None:
+    """四档评分各自的预测间隔标签；仅 FSRS 算法下提供"""
+    if settings.scheduler_algorithm != "fsrs":
+        return None
+    now = datetime.now(timezone.utc)
+    return {
+        q: _humanize_interval_short(due, now)
+        for q, due in fsrs_scheduler.predict_intervals(block, now).items()
+    }
+
+
 def get_next_review(
     session: Session,
     deck_id: int | None = None,
     include_children: bool = True,
+    exclude_block_id: int | None = None,
 ) -> ReviewNextResponse:
     """
     获取下一张待复习的卡片。
 
     优先级：到期复习 > 新卡片。
-    支持 deck_id 过滤和 card_order 排序。
+    支持 deck_id 过滤和 card_order 排序；
+    exclude_block_id 用于前端预取下一张时跳过正在展示的卡。
     """
     # 确定 card_order 和 source_ids
     card_order = "sequential_then_random"
@@ -82,18 +109,7 @@ def get_next_review(
     new_today = count_today_new(session, source_ids=source_ids, count_by_source=count_by_source)
     new_quota_left = max(0, settings.new_cards_per_session - new_today)
 
-    # 1. 先查到期的
-    due = []
-    due_batch = []
-    if review_quota_left > 0:
-        if card_order == "always_sequential":
-            due_batch = get_due_source_batch(session, source_ids=source_ids)
-            if due_batch:
-                due = [due_batch[0]]
-        else:
-            due = get_due_blocks(session, limit=1, source_ids=source_ids, card_order=card_order)
-
-    if due:
+    def _due_response(due: list[Block], due_batch: list[Block]) -> ReviewNextResponse:
         total_due = count_due_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
         total_new = count_new_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
 
@@ -112,7 +128,27 @@ def get_next_review(
             source_title=source_title,
             deck_name=deck_name,
             review_mode="passage" if due_batch else "card",
+            predicted_intervals=_predict_interval_labels(block) if not due_batch else None,
         )
+
+    # 1. 先查真正到期的（next_review <= 当前时刻）。学习步稍后才到点的卡
+    #    不在此列——Anki 式：让位给新卡，别刚评完就再次怼脸上
+    due = []
+    due_batch = []
+    if review_quota_left > 0:
+        if card_order == "always_sequential":
+            due_batch = get_due_source_batch(session, source_ids=source_ids)
+            if due_batch:
+                due = [due_batch[0]]
+        else:
+            due = get_due_blocks(
+                session, limit=1, source_ids=source_ids,
+                card_order=card_order, exclude_block_id=exclude_block_id,
+                due_before=datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+
+    if due:
+        return _due_response(due, due_batch)
 
     # 2. 没有到期的，拿新卡片
     new = []
@@ -123,7 +159,10 @@ def get_next_review(
             if new_batch:
                 new = [new_batch[0]]
         else:
-            new = get_new_blocks(session, limit=1, source_ids=source_ids, card_order=card_order)
+            new = get_new_blocks(
+                session, limit=1, source_ids=source_ids,
+                card_order=card_order, exclude_block_id=exclude_block_id,
+            )
 
     if new:
         total_new = count_new_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
@@ -140,9 +179,20 @@ def get_next_review(
             source_title=source_title,
             deck_name=deck_name,
             review_mode="passage" if new_batch else "card",
+            predicted_intervals=_predict_interval_labels(block) if not new_batch else None,
         )
 
-    # 3. 全部完成
+    # 3. 新卡也没了：提前拉今天稍后到期的学习步卡（Anki 的 learn-ahead），
+    #    避免用户对着"全部完成"空等十分钟
+    if review_quota_left > 0 and card_order != "always_sequential":
+        due = get_due_blocks(
+            session, limit=1, source_ids=source_ids,
+            card_order=card_order, exclude_block_id=exclude_block_id,
+        )
+        if due:
+            return _due_response(due, [])
+
+    # 4. 全部完成
     return ReviewNextResponse(block=None, remaining=0, is_new=False)
 
 

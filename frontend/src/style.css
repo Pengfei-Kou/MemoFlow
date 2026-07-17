@@ -399,6 +399,8 @@ body {
   background-color: var(--color-primary-mid);
   color: var(--color-on-dark-mute);
   border: 1px solid var(--color-hairline-dark);
+  white-space: nowrap; /* 窄屏 flex 挤压时不许换行（"新卡片"曾被折成两行） */
+  flex-shrink: 0;
 }
 
 /* --- Divider --- */
