@@ -470,8 +470,11 @@ async function toggleContext() {
     min-width: 0; /* 允许四键在窄屏均分收缩 */
   }
 
+  /* 整卡可点翻面后，此按钮只是提示物而非唯一热区：
+     缩成居中定宽 pill，减轻视觉重量，与上方卡片的"面板感"区分开 */
   .review-card-actions .btn-pill {
-    width: 100%;
+    width: min(64%, 250px);
+    margin: 0 auto;
     min-height: 48px;
     justify-content: center;
   }
