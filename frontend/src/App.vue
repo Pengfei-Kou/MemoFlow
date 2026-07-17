@@ -68,8 +68,9 @@ async function handleLogout() {
       >
         <!-- Review icon -->
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="2" y="3" width="20" height="14" rx="2"/>
-          <path d="M8 21h8M12 17v4"/>
+          <rect x="3" y="8" width="14" height="12" rx="2"/>
+          <path d="M7 4h12a2 2 0 0 1 2 2v10"/>
+          <path d="M7 14h6"/>
         </svg>
         <span>复习</span>
       </RouterLink>
@@ -98,7 +99,7 @@ async function handleLogout() {
           <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
           <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
         </svg>
-        <span>Decks</span>
+        <span>牌组</span>
       </RouterLink>
 
       <RouterLink

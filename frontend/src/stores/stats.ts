@@ -4,14 +4,18 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { fetchStats, type Stats } from '../api'
+import { computed, ref } from 'vue'
+import { fetchStats, fetchTodaySummary, type Stats, type TodaySummary } from '../api'
 import { useDeckStore } from './deck'
 
 export const useStatsStore = defineStore('stats', () => {
   const stats = ref<Stats | null>(null)
+  const today = ref<TodaySummary | null>(null)
   const loading = ref(false)
   const error = ref('')
+
+  /** 今日剩余任务量（全局，不随 Deck 筛选变），底部导航角标用 */
+  const todayRemaining = computed(() => today.value?.remaining ?? 0)
 
   async function load() {
     const deckStore = useDeckStore()
@@ -19,6 +23,7 @@ export const useStatsStore = defineStore('stats', () => {
     error.value = ''
     try {
       stats.value = await fetchStats(deckStore.selectedDeckId)
+      today.value = await fetchTodaySummary(null)
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : '加载失败'
     } finally {
@@ -31,5 +36,5 @@ export const useStatsStore = defineStore('stats', () => {
     load()
   }
 
-  return { stats, loading, error, load, invalidate }
+  return { stats, today, todayRemaining, loading, error, load, invalidate }
 })

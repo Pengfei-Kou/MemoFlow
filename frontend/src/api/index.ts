@@ -313,6 +313,25 @@ export interface TodaySummary {
   again: number
   retention: number | null
   streak: number
+  remaining: number
+}
+
+// ─── Settings ─────────────────────────────────────────────
+
+export interface ReviewSettings {
+  new_quota_unit: 'cards' | 'articles'
+  new_per_day: number
+}
+
+export function fetchReviewSettings() {
+  return request<ReviewSettings>('/settings/review')
+}
+
+export function updateReviewSettings(data: ReviewSettings) {
+  return request<ReviewSettings>('/settings/review', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
 }
 
 export function undoReview(blockId: number) {

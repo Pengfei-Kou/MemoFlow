@@ -141,3 +141,10 @@ class ReviewLog(SQLModel, table=True):
 
     # 评分前的完整调度状态快照（撤销用；历史回填行无快照故不可撤销）
     state_before: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+
+class AppSetting(SQLModel, table=True):
+    """应用级用户设置（KV），如每日新学配额；环境变量作为未设置时的默认值"""
+
+    key: str = Field(primary_key=True)
+    value: str

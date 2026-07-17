@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchSources, fetchReviewHistory, type SourceListItem, type ReviewHistoryDay } from '../api'
+import {
+  fetchSources, fetchReviewHistory, fetchReviewSettings, updateReviewSettings,
+  type SourceListItem, type ReviewHistoryDay, type ReviewSettings,
+} from '../api'
 import { useDeckStore } from '../stores/deck'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 import { logout } from '../api'
@@ -131,7 +134,31 @@ const monthLabels = computed(() => {
   return labels
 })
 
-onMounted(load)
+// 复习设置（每日新学配额）
+const reviewSettings = ref<ReviewSettings | null>(null)
+const savingSettings = ref(false)
+const settingsMsg = ref('')
+
+async function saveSettings() {
+  if (!reviewSettings.value || savingSettings.value) return
+  savingSettings.value = true
+  settingsMsg.value = ''
+  try {
+    reviewSettings.value = await updateReviewSettings(reviewSettings.value)
+    settingsMsg.value = '✓ 已保存'
+    statsStore.invalidate() // 底部导航角标同步刷新
+    setTimeout(() => { settingsMsg.value = '' }, 2000)
+  } catch {
+    settingsMsg.value = '⚠️ 保存失败'
+  } finally {
+    savingSettings.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  fetchReviewSettings().then((s) => { reviewSettings.value = s }).catch(() => {})
+})
 
 async function handleLogout() {
   try { await logout() } catch { /* cookie 已清即达目的 */ }
@@ -282,6 +309,29 @@ async function handleLogout() {
       <div class="mt-xxl" v-else>
         <p class="text-mute text-sm">该 Deck 范围内还没有内容 — 去导入页面开始吧 🚀</p>
       </div>
+      <!-- 复习设置 -->
+      <div v-if="reviewSettings" class="card mt-xxl" style="background: var(--color-primary-mid);">
+        <h2 class="stats-section-title">复习设置 ⚙️</h2>
+        <div class="settings-row mt-lg">
+          <span class="text-sm">每日新学上限</span>
+          <input
+            v-model.number="reviewSettings.new_per_day"
+            type="number" min="1" max="500"
+            class="form-input settings-num"
+          />
+          <select v-model="reviewSettings.new_quota_unit" class="form-input settings-unit">
+            <option value="articles">篇文章</option>
+            <option value="cards">张卡片</option>
+          </select>
+          <button class="btn btn-pill" :disabled="savingSettings" @click="saveSettings">
+            {{ savingSettings ? '保存中…' : '保存' }}
+          </button>
+        </div>
+        <p class="text-faint text-xs mt-sm">
+          按篇时配额只管"开新篇"——当天开了头的文章保证能学完。推荐 2 篇/天，清完存量后可调回 1。
+        </p>
+        <p v-if="settingsMsg" class="text-xs mt-sm" style="color: var(--color-surface-violet)">{{ settingsMsg }}</p>
+      </div>
     </template>
     <button class="stats-logout mobile-only" @click="handleLogout">退出登录</button>
   </div>
@@ -413,6 +463,21 @@ async function handleLogout() {
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.settings-num {
+  width: 80px;
+}
+
+.settings-unit {
+  width: auto;
 }
 
 .stats-logout {

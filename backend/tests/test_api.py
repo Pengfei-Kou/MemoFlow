@@ -178,6 +178,44 @@ class TestReviewAPI:
         assert data["block"]["id"] in rated
         assert data["is_new"] is False
 
+    def test_review_settings_roundtrip(self, client):
+        """复习设置：默认按张 20，可改为按篇并持久化。"""
+        c, _ = client
+        assert c.get("/api/settings/review").json() == {"new_quota_unit": "cards", "new_per_day": 20}
+        resp = c.put("/api/settings/review", json={"new_quota_unit": "articles", "new_per_day": 2})
+        assert resp.status_code == 200
+        assert c.get("/api/settings/review").json() == {"new_quota_unit": "articles", "new_per_day": 2}
+
+    def test_article_quota_finishes_started_article(self, client):
+        """按篇配额：开了头的文章保证学完；配额用尽不开新篇。"""
+        c, engine = client
+        with Session(engine) as session:
+            src_ids = []
+            for t in ("A", "B"):
+                s = Source(title=t, content_hash=f"hash-{t}", original_text="x", source_type="text")
+                session.add(s)
+                session.flush()
+                for i in (1, 2):
+                    session.add(Block(source_id=s.id, sequence_number=i, content=f"{t}{i} en", quiz=f"{t}{i} 中文"))
+                src_ids.append(s.id)
+            session.commit()
+
+        c.put("/api/settings/review", json={"new_quota_unit": "articles", "new_per_day": 1})
+
+        # 第一张：开篇 A
+        b1 = c.get("/api/review/next").json()["block"]
+        assert b1["source_id"] == src_ids[0]
+        c.post(f"/api/review/{b1['id']}", json={"quality": 5})  # 简单 → 当天不再到期
+
+        # 第二张：配额（1篇）已用，但 A 开了头必须能学完
+        b2 = c.get("/api/review/next").json()["block"]
+        assert b2 is not None
+        assert b2["source_id"] == src_ids[0] and b2["id"] != b1["id"]
+        c.post(f"/api/review/{b2['id']}", json={"quality": 5})
+
+        # A 学完、配额用尽 → 不开 B，今日完成
+        assert c.get("/api/review/next").json()["block"] is None
+
     def test_submit_review(self, client):
         """Submit a review and check schedule updates + review log append."""
         c, engine = client
@@ -316,7 +354,7 @@ class TestTodaySummaryAPI:
         resp = c.get("/api/stats/today")
         assert resp.status_code == 200
         data = resp.json()
-        assert data == {"reviewed": 0, "again": 0, "retention": None, "streak": 0}
+        assert data == {"reviewed": 0, "again": 0, "retention": None, "streak": 0, "remaining": 0}
 
     def test_today_after_reviews(self, client):
         c, engine = client

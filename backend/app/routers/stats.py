@@ -13,6 +13,7 @@ from sqlmodel import Session
 from app.database import get_session
 from app.schemas import StatsResponse, TodaySummaryResponse
 from app.crud import get_stats, get_review_history, get_today_summary, get_deck_source_ids, get_leech_blocks
+from app.services.review_service import count_today_remaining
 from app.config import settings
 
 router = APIRouter(prefix="/api/stats", tags=["Stats"])
@@ -38,12 +39,14 @@ def get_today(
     deck_id: Optional[int] = Query(default=None, description="限定统计范围的 Deck ID"),
     include_children: bool = Query(default=True, description="是否包含子 Deck"),
 ):
-    """今日（本地逻辑日）复习小结：已复习次数 / 忘记次数 / 记住率"""
+    """今日（本地逻辑日）复习小结：已复习次数 / 忘记次数 / 记住率 / 剩余任务"""
     source_ids = None
     if deck_id is not None:
         source_ids = get_deck_source_ids(session, deck_id, include_children)
 
-    return get_today_summary(session, source_ids=source_ids)
+    summary = get_today_summary(session, source_ids=source_ids)
+    summary["remaining"] = count_today_remaining(session, source_ids=source_ids)
+    return summary
 
 
 @router.get("/leeches")

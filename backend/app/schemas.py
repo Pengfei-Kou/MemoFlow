@@ -193,6 +193,19 @@ class TodaySummaryResponse(BaseModel):
     again: int  # 其中评"忘了"的次数
     retention: Optional[float] = None  # 记住率 = 1 - again/reviewed；无复习时为 None
     streak: int = 0  # 连续学习天数（全局，今天未复习不断签）
+    remaining: int = 0  # 今日剩余任务量（到期 + 配额内新卡），导航角标用
+
+
+class ReviewSettingsResponse(BaseModel):
+    """复习设置（每日新学配额）"""
+    new_quota_unit: str  # "cards"（按张）或 "articles"（按篇）
+    new_per_day: int
+
+
+class ReviewSettingsUpdateRequest(BaseModel):
+    """修改复习设置的请求体"""
+    new_quota_unit: Literal["cards", "articles"]
+    new_per_day: int = Field(..., ge=1, le=500)
 
 
 class DeckResponse(BaseModel):

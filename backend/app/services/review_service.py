@@ -20,7 +20,8 @@ from app.crud import (
     get_due_source_batch, get_new_source_batch, submit_batch_review as crud_submit_batch_review,
     count_due_blocks, count_new_blocks, count_today_reviewed, count_today_new,
     get_deck_by_id, get_deck_source_ids, undo_last_review as crud_undo_last_review,
-    count_lapses,
+    count_lapses, get_setting, get_sources_started_today,
+    get_new_blocks_article_quota, count_new_within_article_quota,
 )
 from app.models import Block, Source
 from app.schemas import (
@@ -62,6 +63,37 @@ def _humanize_interval_short(due: datetime, now: datetime) -> str:
     if days < 60:
         return f"{round(days)}天"
     return f"{round(days / 30.4)}个月"
+
+
+def get_new_quota_config(session: Session) -> tuple[str, int]:
+    """新学配额配置：(单位 cards|articles, 每日数量)。用户设置优先，环境变量兜底"""
+    unit = get_setting(session, "new_quota_unit", "cards") or "cards"
+    raw = get_setting(session, "new_per_day", "")
+    try:
+        per_day = int(raw) if raw else settings.new_cards_per_session
+    except ValueError:
+        per_day = settings.new_cards_per_session
+    return unit, max(0, per_day)
+
+
+def _count_new_allowed(session: Session, unit: str, per_day: int,
+                       source_ids: list[int] | None, count_by_source: bool) -> int:
+    """今天还允许学的新卡数（供 remaining 展示；按篇时含进行中文章的余卡）"""
+    if unit == "articles":
+        return count_new_within_article_quota(session, per_day, source_ids)
+    new_today = count_today_new(session, source_ids=source_ids, count_by_source=count_by_source)
+    quota_left = max(0, per_day - new_today)
+    total_new = count_new_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
+    return min(quota_left, total_new)
+
+
+def count_today_remaining(session: Session, source_ids: list[int] | None = None) -> int:
+    """今日剩余任务量（今天到期的 + 配额内新卡），供底部导航角标等展示"""
+    reviewed_today = count_today_reviewed(session, source_ids=source_ids)
+    review_left = max(0, settings.review_cards_per_session - reviewed_today)
+    due = min(count_due_blocks(session, source_ids=source_ids), review_left)
+    unit, per_day = get_new_quota_config(session)
+    return due + _count_new_allowed(session, unit, per_day, source_ids, False)
 
 
 def _predict_interval_labels(block: Block) -> dict[int, str] | None:
@@ -106,15 +138,20 @@ def get_next_review(
     reviewed_today = count_today_reviewed(session, source_ids=source_ids, count_by_source=count_by_source)
     review_quota_left = max(0, settings.review_cards_per_session - reviewed_today)
 
-    new_today = count_today_new(session, source_ids=source_ids, count_by_source=count_by_source)
-    new_quota_left = max(0, settings.new_cards_per_session - new_today)
+    unit, per_day = get_new_quota_config(session)
+    if unit == "articles":
+        # 按篇：配额管"今天开几篇"，开了头的文章保证能学完
+        started = get_sources_started_today(session, source_ids=source_ids)
+        new_quota_left = max(0, per_day - len(started))
+    else:
+        new_today = count_today_new(session, source_ids=source_ids, count_by_source=count_by_source)
+        new_quota_left = max(0, per_day - new_today)
 
     def _due_response(due: list[Block], due_batch: list[Block]) -> ReviewNextResponse:
         total_due = count_due_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
-        total_new = count_new_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
 
         remaining_due = min(max(0, total_due - 1), review_quota_left - 1)
-        remaining_new = min(total_new, new_quota_left)
+        remaining_new = _count_new_allowed(session, unit, per_day, source_ids, count_by_source)
         remaining = remaining_due + remaining_new
 
         block = due[0]
@@ -153,20 +190,25 @@ def get_next_review(
     # 2. 没有到期的，拿新卡片
     new = []
     new_batch = []
-    if new_quota_left > 0:
-        if card_order == "always_sequential":
+    if card_order == "always_sequential":
+        if new_quota_left > 0:
             new_batch = get_new_source_batch(session, source_ids=source_ids)
             if new_batch:
                 new = [new_batch[0]]
-        else:
-            new = get_new_blocks(
-                session, limit=1, source_ids=source_ids,
-                card_order=card_order, exclude_block_id=exclude_block_id,
-            )
+    elif unit == "articles":
+        # 开新篇由 helper 按配额把关；今天开了头的文章即使配额用尽也接着出
+        new = get_new_blocks_article_quota(
+            session, per_day, source_ids=source_ids, exclude_block_id=exclude_block_id,
+        )
+    elif new_quota_left > 0:
+        new = get_new_blocks(
+            session, limit=1, source_ids=source_ids,
+            card_order=card_order, exclude_block_id=exclude_block_id,
+        )
 
     if new:
-        total_new = count_new_blocks(session, source_ids=source_ids, count_by_source=count_by_source)
-        remaining = min(max(0, total_new - 1), new_quota_left - 1)
+        allowed = _count_new_allowed(session, unit, per_day, source_ids, count_by_source)
+        remaining = max(0, allowed - 1)
 
         block = new[0]
         source_title, deck_name = _get_source_and_deck_info(session, block.source_id)

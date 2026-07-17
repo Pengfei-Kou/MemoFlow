@@ -1,20 +1,36 @@
 <script setup lang="ts">
 /**
  * 移动端底部 Tab 导航（≤768px 显示，桌面端由左侧边栏承担）。
- * 图标与侧边栏保持同一套 SVG。
+ * 图标与侧边栏保持同一套 SVG；复习 Tab 带今日剩余角标。
  */
+import { computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { useStatsStore } from '../stores/stats'
 
 const route = useRoute()
+const statsStore = useStatsStore()
+
+const badge = computed(() => {
+  const n = statsStore.todayRemaining
+  return n > 99 ? '99+' : n > 0 ? String(n) : ''
+})
+
+onMounted(() => {
+  if (!statsStore.today) statsStore.load()
+})
 </script>
 
 <template>
   <nav class="mobile-tabbar">
     <RouterLink to="/" class="tab-item" :class="{ active: route.path === '/' }">
-      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <rect x="2" y="3" width="20" height="14" rx="2"/>
-        <path d="M8 21h8M12 17v4"/>
-      </svg>
+      <span class="tab-icon-wrap">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="8" width="14" height="12" rx="2"/>
+          <path d="M7 4h12a2 2 0 0 1 2 2v10"/>
+          <path d="M7 14h6"/>
+        </svg>
+        <span v-if="badge" class="tab-badge">{{ badge }}</span>
+      </span>
       <span>复习</span>
     </RouterLink>
 
@@ -32,7 +48,7 @@ const route = useRoute()
         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
         <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
       </svg>
-      <span>Decks</span>
+      <span>牌组</span>
     </RouterLink>
 
     <RouterLink to="/library" class="tab-item" :class="{ active: route.path === '/library' }">
@@ -75,6 +91,7 @@ const route = useRoute()
 }
 
 .tab-item {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -93,8 +110,43 @@ const route = useRoute()
   color: var(--color-surface-violet);
 }
 
+/* 选中态指示条：图标上方 2px 短横线 */
+.tab-item.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background-color: var(--color-surface-violet);
+}
+
 .tab-icon {
   width: 22px;
   height: 22px;
+}
+
+.tab-icon-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 今日剩余角标 */
+.tab-badge {
+  position: absolute;
+  top: -4px;
+  right: -10px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-violet);
+  color: var(--color-primary-deep);
+  font-size: 9px;
+  font-weight: 640;
+  line-height: 15px;
+  text-align: center;
 }
 </style>

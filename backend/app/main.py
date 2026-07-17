@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from app.config import settings
 from app.database import create_db_and_tables
-from app.routers import sources, blocks, review, stats, decks, auth
+from app.routers import sources, blocks, review, stats, decks, auth, settings as settings_router
 from app.services.auth import SESSION_COOKIE, verify_session_token
 
 # 配置日志
@@ -100,6 +100,7 @@ app.include_router(sources.router)
 app.include_router(blocks.router)
 app.include_router(review.router)
 app.include_router(stats.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/api/health", tags=["Health"])

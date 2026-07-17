@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select, func, col
 
-from app.models import Source, Block, Deck, ReviewLog
+from app.models import Source, Block, Deck, ReviewLog, AppSetting
 from app.config import settings
 from app.services import fsrs_scheduler
 from app.services.scheduler import calculate_sm2, get_next_review_date
@@ -562,6 +562,85 @@ def count_today_reviewed(session: Session, source_ids: list[int] | None = None, 
     if source_ids is not None:
         stmt = stmt.where(col(Block.source_id).in_(source_ids))
     return session.exec(stmt).one()
+
+
+def get_setting(session: Session, key: str, default: str | None = None) -> str | None:
+    """读应用级 KV 设置；未设置返回 default"""
+    row = session.get(AppSetting, key)
+    return row.value if row else default
+
+
+def set_setting(session: Session, key: str, value: str) -> None:
+    """写应用级 KV 设置（upsert，不 commit）"""
+    row = session.get(AppSetting, key)
+    if row:
+        row.value = value
+    else:
+        row = AppSetting(key=key, value=value)
+    session.add(row)
+
+
+def get_sources_started_today(session: Session, source_ids: list[int] | None = None) -> list[int]:
+    """今天（本地逻辑日）开始学新卡的 Source ID 列表"""
+    today_start, _ = local_day_bounds()
+    stmt = (
+        select(func.distinct(Block.source_id))
+        .where(Block.first_reviewed_at >= today_start)
+    )
+    if source_ids is not None:
+        stmt = stmt.where(col(Block.source_id).in_(source_ids))
+    return list(session.exec(stmt).all())
+
+
+def get_new_blocks_article_quota(
+    session: Session,
+    per_day: int,
+    source_ids: list[int] | None = None,
+    exclude_block_id: int | None = None,
+) -> list[Block]:
+    """按篇配额取下一张新卡：先接着学今天开了头的文章（不受配额限制，
+    保证开篇必学完），配额有余才开新的一篇"""
+    started = get_sources_started_today(session, source_ids)
+    if started:
+        blocks = get_new_blocks(
+            session, limit=1, source_ids=started,
+            card_order="sequential_then_random", exclude_block_id=exclude_block_id,
+        )
+        if blocks:
+            return blocks
+    if len(started) >= per_day:
+        return []
+    return get_new_blocks(
+        session, limit=1, source_ids=source_ids,
+        card_order="sequential_then_random", exclude_block_id=exclude_block_id,
+    )
+
+
+def count_new_within_article_quota(
+    session: Session,
+    per_day: int,
+    source_ids: list[int] | None = None,
+) -> int:
+    """按篇配额下，今天还允许学的新卡总数（进行中文章的余卡 + 配额内未开文章的整卡）"""
+    started = set(get_sources_started_today(session, source_ids))
+    stmt = (
+        select(Block.source_id, func.count())
+        .where(Block.next_review == None)  # noqa: E711
+        .where(Block.is_suspended == False)
+    )
+    if source_ids is not None:
+        stmt = stmt.where(col(Block.source_id).in_(source_ids))
+    stmt = stmt.group_by(Block.source_id).order_by(Block.source_id)
+
+    total = 0
+    articles_left = max(0, per_day - len(started))
+    for sid, n in session.exec(stmt).all():
+        if sid in started:
+            total += n
+        elif articles_left > 0:
+            total += n
+            articles_left -= 1
+    return total
 
 
 def count_today_new(session: Session, source_ids: list[int] | None = None, count_by_source: bool = False) -> int:
