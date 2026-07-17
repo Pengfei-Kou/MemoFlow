@@ -564,6 +564,44 @@ def count_today_reviewed(session: Session, source_ids: list[int] | None = None, 
     return session.exec(stmt).one()
 
 
+def relearn_source(session: Session, source_id: int) -> int | None:
+    """整篇重学：清空该来源全部卡片的调度进度（ReviewLog 历史保留）。
+    返回重置的卡片数；来源不存在返回 None。"""
+    source = session.get(Source, source_id)
+    if not source:
+        return None
+    blocks = session.exec(select(Block).where(Block.source_id == source_id)).all()
+    for b in blocks:
+        b.next_review = None
+        b.last_review = None
+        b.first_reviewed_at = None
+        b.reps = 0
+        b.interval = 0
+        b.ease_factor = 2.5
+        b.stability = None
+        b.difficulty = None
+        b.fsrs_state = None
+        b.fsrs_step = None
+        session.add(b)
+    session.flush()
+    return len(blocks)
+
+
+def count_due_tomorrow(session: Session, source_ids: list[int] | None = None) -> int:
+    """明天（下一个逻辑日）到期的卡片数"""
+    _, day_end = local_day_bounds()
+    stmt = (
+        select(func.count())
+        .select_from(Block)
+        .where(Block.next_review >= day_end)
+        .where(Block.next_review < day_end + timedelta(days=1))
+        .where(Block.is_suspended == False)
+    )
+    if source_ids is not None:
+        stmt = stmt.where(col(Block.source_id).in_(source_ids))
+    return session.exec(stmt).one()
+
+
 def get_setting(session: Session, key: str, default: str | None = None) -> str | None:
     """读应用级 KV 设置；未设置返回 default"""
     row = session.get(AppSetting, key)

@@ -178,6 +178,22 @@ class TestReviewAPI:
         assert data["block"]["id"] in rated
         assert data["is_new"] is False
 
+    def test_relearn_source_resets_progress(self, client):
+        """整篇重学：清空调度进度，卡片回到新卡状态。"""
+        c, engine = client
+        _seed_data(engine)
+        bid = c.get("/api/review/next").json()["block"]["id"]
+        c.post(f"/api/review/{bid}", json={"quality": 4})
+        assert c.get(f"/api/blocks/{bid}").json()["next_review"] is not None
+
+        source_id = c.get("/api/sources").json()[0]["id"]
+        resp = c.post(f"/api/sources/{source_id}/relearn")
+        assert resp.status_code == 200
+        b = c.get(f"/api/blocks/{bid}").json()
+        assert b["next_review"] is None
+        assert b["reps"] == 0
+        assert b["stability"] is None
+
     def test_review_settings_roundtrip(self, client):
         """复习设置：默认按张 20，可改为按篇并持久化。"""
         c, _ = client
@@ -354,7 +370,7 @@ class TestTodaySummaryAPI:
         resp = c.get("/api/stats/today")
         assert resp.status_code == 200
         data = resp.json()
-        assert data == {"reviewed": 0, "again": 0, "retention": None, "streak": 0, "remaining": 0}
+        assert data == {"reviewed": 0, "again": 0, "retention": None, "streak": 0, "remaining": 0, "due_tomorrow": 0}
 
     def test_today_after_reviews(self, client):
         c, engine = client

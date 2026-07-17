@@ -134,6 +134,14 @@ const monthLabels = computed(() => {
   return labels
 })
 
+// 主题切换（本机偏好，存 localStorage）
+const theme = ref(localStorage.getItem('mf-theme') ?? 'dark')
+function setTheme(t: string) {
+  theme.value = t
+  localStorage.setItem('mf-theme', t)
+  document.documentElement.dataset.theme = t
+}
+
 // 复习设置（每日新学配额）
 const reviewSettings = ref<ReviewSettings | null>(null)
 const savingSettings = ref(false)
@@ -292,7 +300,8 @@ async function handleLogout() {
           <div
             v-for="source in sourcesInDeck"
             :key="source.id"
-            class="source-item"
+            class="source-item source-item-link"
+            @click="$router.push(`/sources/${source.id}`)"
           >
             <div class="source-item-content">
               <p class="source-title">{{ source.title }}</p>
@@ -302,6 +311,7 @@ async function handleLogout() {
               </p>
             </div>
             <span class="badge">{{ source.block_count }} 张</span>
+            <span class="source-chevron text-faint">›</span>
           </div>
         </div>
       </div>
@@ -331,6 +341,15 @@ async function handleLogout() {
           按篇时配额只管"开新篇"——当天开了头的文章保证能学完。推荐 2 篇/天，清完存量后可调回 1。
         </p>
         <p v-if="settingsMsg" class="text-xs mt-sm" style="color: var(--color-surface-violet)">{{ settingsMsg }}</p>
+
+        <div class="settings-row mt-lg">
+          <span class="text-sm">主题</span>
+          <select class="form-input settings-unit" :value="theme" @change="setTheme(($event.target as HTMLSelectElement).value)">
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+          </select>
+          <span class="text-faint text-xs">本机生效，立即切换</span>
+        </div>
       </div>
     </template>
     <button class="stats-logout mobile-only" @click="handleLogout">退出登录</button>
@@ -463,6 +482,19 @@ async function handleLogout() {
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
+}
+
+.source-item-link {
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.source-item-link:hover {
+  border-color: var(--color-surface-violet);
+}
+
+.source-chevron {
+  margin-left: var(--space-sm);
+  font-size: var(--text-body-lg);
 }
 
 .settings-row {

@@ -23,7 +23,7 @@ from app.schemas import (
     UrlFetchRequest,
     MarkdownImportResponse,
 )
-from app.crud import get_all_sources, get_source_by_id, delete_source
+from app.crud import get_all_sources, get_source_by_id, delete_source, relearn_source
 from app.services.import_service import import_text, import_markdown, preview_text
 from app.services.url_fetcher import fetch_url_text
 
@@ -118,6 +118,16 @@ def get_source(source_id: int, session: Session = Depends(get_session)):
     if not source:
         raise HTTPException(status_code=404, detail="来源不存在")
     return source
+
+
+@router.post("/{source_id}/relearn", response_model=MessageResponse)
+def relearn(source_id: int, session: Session = Depends(get_session)):
+    """整篇重学：清空该来源全部卡片的调度进度（复习日志保留）"""
+    count = relearn_source(session, source_id)
+    if count is None:
+        raise HTTPException(status_code=404, detail="来源不存在")
+    session.commit()
+    return MessageResponse(message=f"已重置 {count} 张卡片，可从头学习这篇")
 
 
 @router.delete("/{source_id}", response_model=MessageResponse)

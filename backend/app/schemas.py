@@ -194,6 +194,7 @@ class TodaySummaryResponse(BaseModel):
     retention: Optional[float] = None  # 记住率 = 1 - again/reviewed；无复习时为 None
     streak: int = 0  # 连续学习天数（全局，今天未复习不断签）
     remaining: int = 0  # 今日剩余任务量（到期 + 配额内新卡），导航角标用
+    due_tomorrow: int = 0  # 明天到期的卡片数，完成页预告用
 
 
 class ReviewSettingsResponse(BaseModel):

@@ -78,6 +78,25 @@
   --heatmap-5:     #c9b4fa;   /* matches --color-surface-violet */
 }
 
+/* ─── 浅色主题（统计页设置切换，存 localStorage，默认深色）────
+   只覆盖颜色 token；命名沿用深色语义（on-dark = 正文色）。 */
+html[data-theme='light'] {
+  --color-primary:        #f4f2fb;   /* 页面底：淡紫调纸白 */
+  --color-primary-deep:   #ffffff;   /* 底栏/导航 */
+  --color-primary-mid:    #ffffff;   /* 卡片面板 */
+  --color-on-primary:     #241f3d;   /* 主文字 */
+  --color-surface-violet: #6a48d7;   /* 强调紫加深保证对比度 */
+  --color-hairline-dark:  #ddd9ec;
+  --color-on-dark-mute:   #5f5a78;
+  --color-on-dark-faint:  #a09bb6;
+  --heatmap-empty: #eceaf6;
+  --heatmap-1:     #d8cef5;
+  --heatmap-2:     #b9a5ee;
+  --heatmap-3:     #977ae2;
+  --heatmap-4:     #7a56d8;
+  --heatmap-5:     #6a48d7;
+}
+
 /* --- Reset & Base --- */
 *, *::before, *::after {
   box-sizing: border-box;

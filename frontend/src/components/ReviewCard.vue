@@ -153,7 +153,6 @@ async function toggleContext() {
 
         <!-- Notes Section -->
         <div v-if="card.notes && card.notes.length > 0" class="review-notes-section">
-          <div class="divider" style="margin: var(--space-md) 0; opacity: 0.5;"></div>
           <p class="review-card-label text-xs text-faint" style="margin-bottom: var(--space-sm);">附属知识点 <span style="text-transform: none; opacity: 0.5; margin-left: 4px;">{{ isTouch ? '(点按查看翻译)' : '(悬浮查看翻译)' }}</span></p>
           <ul class="review-notes-list">
             <li v-for="(note, idx) in card.notes" :key="idx" class="review-note-item">
@@ -247,7 +246,7 @@ async function toggleContext() {
   font-size: var(--text-display-md);
   font-weight: 540;
   line-height: 1.6;
-  color: #ffffff;
+  color: var(--color-on-primary);
   letter-spacing: -0.135px;
 }
 
@@ -324,8 +323,13 @@ async function toggleContext() {
 }
 
 /* ─── Notes ────────────────────────────────────────────── */
+/* 附属内容降一级：收进内嵌面板、字号小一档，让答案句在层级上明显占优 */
 .review-notes-section {
   margin-top: var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.15);
 }
 .review-notes-list {
   list-style: none;
@@ -336,7 +340,7 @@ async function toggleContext() {
   gap: var(--space-md);
 }
 .review-note-item {
-  font-size: var(--text-body-md);
+  font-size: var(--text-caption);
   line-height: 1.5;
   display: flex;
   flex-direction: column;
@@ -361,7 +365,7 @@ async function toggleContext() {
 .note-en-mask:active,
 .note-en-mask.revealed {
   background-color: transparent;
-  color: #ffffff;
+  color: var(--color-on-primary);
 }
 
 .review-card-actions {

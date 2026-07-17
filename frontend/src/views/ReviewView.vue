@@ -376,17 +376,20 @@ onUnmounted(() => {
     <!-- All done state -->
     <div v-else-if="done" class="review-center">
       <div class="review-done-card card">
-        <p style="font-size: 48px; margin-bottom: var(--space-md)">🎉</p>
+        <p class="review-done-emoji">🎉</p>
         <h2 class="review-done-title">今天全部完成！</h2>
         <p v-if="today && today.reviewed > 0" class="review-done-summary">
           今日复习 <strong>{{ today.reviewed }}</strong> 次<template v-if="retentionLabel !== null">
             · 记住率 <strong>{{ retentionLabel }}%</strong></template>
         </p>
-        <p v-if="today && today.streak > 1" class="review-done-summary">
+        <p v-if="today && today.streak > 1" class="review-done-streak">
           🔥 连续学习 <strong>{{ today.streak }}</strong> 天
         </p>
-        <p class="text-mute" style="margin-top: var(--space-md)">
-          明天继续，间隔重复的魔法正在发生。
+        <p class="text-mute review-done-tomorrow">
+          <template v-if="today && today.due_tomorrow > 0">
+            明天到期 <strong>{{ today.due_tomorrow }}</strong> 张 — 明天见 👋
+          </template>
+          <template v-else>明天暂无到期卡片，好好休息 🌙</template>
         </p>
       </div>
     </div>
@@ -548,6 +551,34 @@ onUnmounted(() => {
 }
 .review-done-summary strong {
   color: var(--color-surface-violet);
+  font-weight: 540;
+}
+
+.review-done-emoji {
+  font-size: 56px;
+  margin-bottom: var(--space-md);
+  animation: done-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes done-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.review-done-streak {
+  margin-top: var(--space-md);
+  font-size: var(--text-body-lg);
+}
+.review-done-streak strong {
+  color: var(--color-surface-violet);
+  font-weight: 640;
+}
+
+.review-done-tomorrow {
+  margin-top: var(--space-lg);
+}
+.review-done-tomorrow strong {
+  color: var(--color-on-primary);
   font-weight: 540;
 }
 

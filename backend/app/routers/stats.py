@@ -12,7 +12,7 @@ from sqlmodel import Session
 
 from app.database import get_session
 from app.schemas import StatsResponse, TodaySummaryResponse
-from app.crud import get_stats, get_review_history, get_today_summary, get_deck_source_ids, get_leech_blocks
+from app.crud import get_stats, get_review_history, get_today_summary, get_deck_source_ids, get_leech_blocks, count_due_tomorrow
 from app.services.review_service import count_today_remaining
 from app.config import settings
 
@@ -46,6 +46,7 @@ def get_today(
 
     summary = get_today_summary(session, source_ids=source_ids)
     summary["remaining"] = count_today_remaining(session, source_ids=source_ids)
+    summary["due_tomorrow"] = count_due_tomorrow(session, source_ids=source_ids)
     return summary
 
 

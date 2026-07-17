@@ -314,6 +314,7 @@ export interface TodaySummary {
   retention: number | null
   streak: number
   remaining: number
+  due_tomorrow: number
 }
 
 // ─── Settings ─────────────────────────────────────────────
@@ -352,6 +353,25 @@ export function fetchReviewHistory(days = 90, deckId?: number | null) {
     params.set('include_children', 'true')
   }
   return request<ReviewHistoryDay[]>(`/stats/history?${params}`)
+}
+
+export interface SourceDetail {
+  id: number
+  title: string
+  source_type: string
+  url: string | null
+  original_text: string
+  created_at: string
+  deck_id: number | null
+  blocks: Block[]
+}
+
+export function fetchSourceDetail(sourceId: number) {
+  return request<SourceDetail>(`/sources/${sourceId}`)
+}
+
+export function relearnSource(sourceId: number) {
+  return request<{ message: string }>(`/sources/${sourceId}/relearn`, { method: 'POST' })
 }
 
 export function fetchSources() {
