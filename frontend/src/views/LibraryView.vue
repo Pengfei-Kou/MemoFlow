@@ -5,6 +5,7 @@ import { useDeckStore } from '../stores/deck'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 import EditCardModal from '../components/EditCardModal.vue'
+import HubTabs from '../components/HubTabs.vue'
 
 const deckStore = useDeckStore()
 const blocks  = ref<Block[]>([])
@@ -138,8 +139,8 @@ onMounted(load)
 
 <template>
   <div class="page-container">
-    <div class="flex items-center justify-between">
-      <h1 class="page-title" style="margin-bottom: 0">卡片库</h1>
+    <div class="flex items-center justify-between hub-header">
+      <HubTabs />
       <div class="flex items-center gap-md">
         <DeckScopeSelect />
         <span class="badge">{{ filtered.length }} 张</span>

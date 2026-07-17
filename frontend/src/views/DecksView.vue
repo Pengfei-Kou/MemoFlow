@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { fetchDecks, createDeck, updateDeck, deleteDeck, type Deck } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import HubTabs from '../components/HubTabs.vue'
 import { useDeckStore } from '../stores/deck'
 
 const deckStore = useDeckStore()
@@ -188,10 +189,10 @@ onMounted(load)
 
 <template>
   <div class="page-container">
-    <div class="flex items-center justify-between">
-      <h1 class="page-title">Deck 管理 🗂️</h1>
+    <div class="flex items-center justify-between hub-header">
+      <HubTabs />
       <button class="btn btn-primary" @click="showCreateForm = !showCreateForm">
-        {{ showCreateForm ? '收起' : '+ 新建 Deck' }}
+        {{ showCreateForm ? '收起' : '+ 新建' }}
       </button>
     </div>
 
@@ -413,14 +414,24 @@ onMounted(load)
   flex-shrink: 0;
 }
 
+.deck-node-info > div {
+  min-width: 0;
+}
+
 .deck-node-name {
   font-size: var(--text-body-md);
   font-weight: 540;
   color: var(--color-on-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .deck-node-path {
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .deck-node-meta {
@@ -428,6 +439,18 @@ onMounted(load)
   align-items: center;
   gap: var(--space-md);
   flex-shrink: 0;
+}
+
+/* 窄屏：徽章+按钮放不下时换到第二行，绝不撑宽页面
+   （曾把文档撑到 417px 导致手机整页被缩放） */
+@media (max-width: 768px) {
+  .deck-node-content {
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-md);
+  }
+  .deck-node-meta {
+    margin-left: auto;
+  }
 }
 
 .deck-strategy-badge {

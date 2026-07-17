@@ -407,6 +407,13 @@ body {
 .stat-value.warm   { color: #f5c882; }
 
 /* --- Badge / pill tags --- */
+/* 卡库三页（卡片库/牌组/导入）共用的头部行：标签导航 + 页面操作 */
+.hub-header {
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

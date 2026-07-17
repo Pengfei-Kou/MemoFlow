@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useDeckStore } from '../stores/deck'
+import HubTabs from '../components/HubTabs.vue'
 import TextImportTab from '../components/TextImportTab.vue'
 import UrlImportTab from '../components/UrlImportTab.vue'
 import MarkdownImportTab from '../components/MarkdownImportTab.vue'
@@ -19,7 +20,9 @@ onMounted(async () => {
 
 <template>
   <div class="page-container">
-    <h1 class="page-title">导入内容 ✨</h1>
+    <div class="hub-header">
+      <HubTabs />
+    </div>
 
     <!-- Tab 切换 -->
     <div class="import-tabs">
