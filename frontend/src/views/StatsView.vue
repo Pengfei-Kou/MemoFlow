@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import {
-  fetchSources, fetchReviewHistory,
-  type SourceListItem, type ReviewHistoryDay,
-} from '../api'
+import { fetchReviewHistory, type ReviewHistoryDay } from '../api'
 import { useDeckStore } from '../stores/deck'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 import { useStatsStore } from '../stores/stats'
 
 const deckStore = useDeckStore()
 const statsStore = useStatsStore()
-const sources = ref<SourceListItem[]>([])
 const history = ref<ReviewHistoryDay[]>([])
 const loading = ref(false)
 const error   = ref('')
@@ -22,10 +18,7 @@ async function load() {
   loading.value = true
   error.value   = ''
   try {
-    ;[sources.value, history.value] = await Promise.all([
-      fetchSources(),
-      fetchReviewHistory(90, deckStore.selectedDeckId),
-    ])
+    history.value = await fetchReviewHistory(90, deckStore.selectedDeckId)
     await statsStore.load()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
@@ -37,30 +30,10 @@ async function load() {
 // Re-load when the selected Deck changes
 watch(() => deckStore.selectedDeckId, load)
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-}
-
-// Group sources by deck path
-const sourcesInDeck = computed(() => {
-  if (deckStore.selectedDeckId == null) return sources.value
-  const deck = deckStore.getDeckById(deckStore.selectedDeckId)
-  if (!deck) return sources.value
-  const prefix = deck.path
-  const matchedDecks = deckStore.decks.filter(d => d.path === prefix || d.path.startsWith(prefix + '/'))
-  const matchedIds = new Set(matchedDecks.map(d => d.id))
-  return sources.value.filter(s => s.deck_id != null && matchedIds.has(s.deck_id))
-})
-
 const currentScopeLabel = computed(() => {
   const deck = deckStore.getDeckById(deckStore.selectedDeckId)
   return deck ? deck.path : '全部 Deck'
 })
-
-function getDeckPath(deckId: number | null) {
-  if (deckId == null) return '—'
-  return deckStore.getDeckById(deckId)?.path ?? String(deckId)
-}
 
 // ── 热力图计算 ──────────────────────────────────────────────
 // 按 7 天一列切分，用于渲染网格
@@ -255,32 +228,10 @@ onMounted(load)
         </div>
       </div>
 
-      <!-- Sources list -->
-      <div class="mt-xxl" v-if="sourcesInDeck.length > 0">
-        <h2 class="stats-section-title">来源列表</h2>
-        <div class="sources-list mt-lg">
-          <div
-            v-for="source in sourcesInDeck"
-            :key="source.id"
-            class="source-item source-item-link"
-            @click="$router.push(`/sources/${source.id}`)"
-          >
-            <div class="source-item-content">
-              <p class="source-title">{{ source.title }}</p>
-              <p class="text-faint text-sm">
-                {{ formatDate(source.created_at) }}
-                <span v-if="source.deck_id" class="source-deck-tag">· {{ getDeckPath(source.deck_id) }}</span>
-              </p>
-            </div>
-            <span class="badge">{{ source.block_count }} 张</span>
-            <span class="source-chevron text-faint">›</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-xxl" v-else>
-        <p class="text-mute text-sm">该 Deck 范围内还没有内容 — 去导入页面开始吧 🚀</p>
-      </div>
+      <!-- 文章列表已迁至 卡库 › 文章 -->
+      <p class="text-faint text-xs mt-xxl" style="text-align:center">
+        文章与卡片管理在 <RouterLink to="/articles" class="stats-hub-link">卡库</RouterLink> 中
+      </p>
     </template>
   </div>
 </template>
@@ -293,42 +244,9 @@ onMounted(load)
   color: var(--color-on-primary);
 }
 
-.sources-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.source-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-xl);
-  background-color: var(--color-primary-deep);
-  border: 1px solid var(--color-hairline-dark);
-  border-radius: var(--radius-md);
-  padding: var(--space-lg);
-  transition: background-color var(--transition);
-}
-
-.source-item:hover {
-  background-color: var(--color-primary-mid);
-}
-
-.source-item-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.source-title {
-  font-size: var(--text-body-md);
-  font-weight: 540;
-  color: var(--color-on-primary);
-}
-
-.source-deck-tag {
+.stats-hub-link {
   color: var(--color-surface-violet);
+  text-decoration: none;
 }
 
 /* ── 热力图 ─────────────────────────────────── */
@@ -411,19 +329,6 @@ onMounted(load)
 }
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
-}
-
-.source-item-link {
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-}
-.source-item-link:hover {
-  border-color: var(--color-surface-violet);
-}
-
-.source-chevron {
-  margin-left: var(--space-sm);
-  font-size: var(--text-body-lg);
 }
 
 </style>

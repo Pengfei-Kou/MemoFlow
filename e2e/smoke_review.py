@@ -62,7 +62,17 @@ def main() -> None:
             page.wait_for_timeout(1000)
 
         assert len(set(seen)) == 3, f'卡片重复出现（学习步没让位给新卡）: {seen}'
-        print('✓ 冒烟通过：正面到达 / 点击翻面 / 评分切卡 / 三张不重复')
+        print('✓ 复习流程：正面到达 / 点击翻面 / 评分切卡 / 三张不重复')
+
+        # 全页横向溢出审计：文档宽必须等于视口宽，否则手机会整页缩放
+        for path in ['/', '/decks', '/articles', '/library', '/stats', '/import', '/settings']:
+            page.goto(f'{BASE}{path}', wait_until='networkidle')
+            page.wait_for_timeout(600)
+            r = page.evaluate(
+                '() => ({vw: document.documentElement.clientWidth, dw: document.documentElement.scrollWidth})'
+            )
+            assert r['dw'] <= r['vw'], f'{path} 横向溢出：文档宽 {r["dw"]} > 视口 {r["vw"]}'
+        print('✓ 溢出审计：全部页面文档宽 == 视口宽')
         browser.close()
 
 

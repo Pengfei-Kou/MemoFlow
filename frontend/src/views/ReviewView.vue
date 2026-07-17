@@ -39,6 +39,9 @@ const articleSwitched = ref(false)
 // 评分按钮上的预测间隔（仅单卡模式，随 /review/next 返回）
 const predictedIntervals = ref<Record<string, string> | null>(null)
 
+// 本篇进度 "5/17"（学新卡按序推进时展示，呼应按篇学习）
+const sourcePosition = ref<string | null>(null)
+
 // 预取的下一张卡：评分后立即切换，消除切卡等待
 const nextData = ref<ReviewNextResponse | null>(null)
 let loadGen = 0 // 换 Deck / 撤销等强制重载时递增，作废在途预取
@@ -116,6 +119,7 @@ function applyData(data: ReviewNextResponse) {
   sourceTitle.value = data.source_title ?? null
   deckName.value    = data.deck_name ?? null
   predictedIntervals.value = data.predicted_intervals ?? null
+  sourcePosition.value = data.source_position ?? null
   done.value    = false
 
   if (data.review_mode === 'passage' && data.batch && data.batch.length > 0) {
@@ -411,6 +415,7 @@ onUnmounted(() => {
         </div>
         <div class="review-meta-sub">
           <span class="review-deck-scope text-xs desktop-only">🗂️ {{ currentDeckLabel }}</span>
+          <span v-if="isNew && sourcePosition" class="text-faint text-xs">📄 本篇 {{ sourcePosition }}</span>
           <span class="text-faint text-xs review-progress-label">{{ progressLabel }}</span>
         </div>
       </div>

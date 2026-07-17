@@ -63,6 +63,7 @@ export interface SourceListItem {
   source_type: string
   created_at: string
   block_count: number
+  learned_count: number
   deck_id: number | null
 }
 
@@ -93,6 +94,7 @@ export interface ReviewNextResponse {
   deck_name: string | null
   review_mode: string
   predicted_intervals: Record<string, string> | null
+  source_position: string | null
 }
 
 export interface ReviewSubmitResponse {

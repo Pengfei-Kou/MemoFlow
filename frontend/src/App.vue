@@ -26,7 +26,7 @@ const selectedDeck = computed(() => deckStore.getDeckById(deckStore.selectedDeck
 
 /** 卡库 = 卡片库/牌组/导入 三页 + 文章详情 */
 const hubActive = computed(() =>
-  ['/library', '/decks', '/import'].includes(route.path) || route.path.startsWith('/sources/')
+  ['/library', '/decks', '/import', '/articles'].includes(route.path) || route.path.startsWith('/sources/')
 )
 
 async function handleLogout() {

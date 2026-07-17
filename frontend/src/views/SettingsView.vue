@@ -8,6 +8,7 @@ import {
   fetchReviewSettings, updateReviewSettings, logout, type ReviewSettings,
 } from '../api'
 import { useStatsStore } from '../stores/stats'
+import { setThemePref, themePref } from '../theme'
 
 const statsStore = useStatsStore()
 
@@ -32,12 +33,11 @@ async function saveSettings() {
   }
 }
 
-// 主题切换（本机偏好，存 localStorage）
-const theme = ref(localStorage.getItem('mf-theme') ?? 'dark')
+// 主题切换（本机偏好，存 localStorage；auto 跟随系统）
+const theme = ref(themePref())
 function setTheme(t: string) {
   theme.value = t
-  localStorage.setItem('mf-theme', t)
-  document.documentElement.dataset.theme = t
+  setThemePref(t)
 }
 
 async function handleLogout() {
@@ -84,6 +84,7 @@ onMounted(() => {
         <select class="form-input settings-unit" :value="theme" @change="setTheme(($event.target as HTMLSelectElement).value)">
           <option value="dark">深色</option>
           <option value="light">浅色</option>
+          <option value="auto">跟随系统</option>
         </select>
         <span class="text-faint text-xs">本机生效，立即切换</span>
       </div>

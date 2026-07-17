@@ -102,6 +102,7 @@ class SourceListItem(BaseModel):
     source_type: str
     created_at: datetime
     block_count: int
+    learned_count: int = 0
     deck_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
@@ -158,6 +159,7 @@ class ReviewNextResponse(BaseModel):
     deck_name: Optional[str] = None     # [V3新增] Deck 名称
     review_mode: str = "card"           # [V3新增] "card" 或 "passage"
     predicted_intervals: Optional[dict[int, str]] = None  # 四档评分的预测间隔（仅单卡模式）
+    source_position: Optional[str] = None  # 本篇进度 "5/17"（学新卡时按序推进才有意义）
 
 
 class ReviewSubmitResponse(BaseModel):

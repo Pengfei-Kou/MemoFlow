@@ -7,9 +7,11 @@ import { RouterLink, useRoute } from 'vue-router'
 
 const route = useRoute()
 
+// 顺序按三层结构从大到小：牌组 ⊃ 文章 ⊃ 卡片，导入排最后
 const tabs = [
-  { to: '/library', label: '卡片库' },
   { to: '/decks', label: '牌组' },
+  { to: '/articles', label: '文章' },
+  { to: '/library', label: '卡片' },
   { to: '/import', label: '导入' },
 ]
 </script>

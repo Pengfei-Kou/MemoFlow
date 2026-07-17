@@ -204,7 +204,7 @@ def create_source(
 
 
 def get_all_sources(session: Session) -> list[dict]:
-    """获取所有来源（含卡片计数）"""
+    """获取所有来源（含卡片计数与已学计数，供文章列表进度条）"""
     statement = (
         select(
             Source.id,
@@ -213,6 +213,7 @@ def get_all_sources(session: Session) -> list[dict]:
             Source.created_at,
             Source.deck_id,
             func.count(Block.id).label("block_count"),
+            func.count(Block.next_review).label("learned_count"),  # COUNT(col) 跳过 NULL
         )
         .outerjoin(Block, Source.id == Block.source_id)
         .group_by(Source.id)
@@ -227,6 +228,7 @@ def get_all_sources(session: Session) -> list[dict]:
             "created_at": r[3],
             "deck_id": r[4],
             "block_count": r[5],
+            "learned_count": r[6],
         }
         for r in results
     ]
@@ -600,6 +602,13 @@ def count_due_tomorrow(session: Session, source_ids: list[int] | None = None) ->
     if source_ids is not None:
         stmt = stmt.where(col(Block.source_id).in_(source_ids))
     return session.exec(stmt).one()
+
+
+def count_source_blocks(session: Session, source_id: int) -> int:
+    """某来源的卡片总数（供复习页"本篇 x/N"进度）"""
+    return session.exec(
+        select(func.count()).select_from(Block).where(Block.source_id == source_id)
+    ).one()
 
 
 def get_setting(session: Session, key: str, default: str | None = None) -> str | None:

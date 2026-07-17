@@ -4,7 +4,7 @@
  * 三层结构（仓库-文章-句子）中间层的 UI 落点。
  */
 import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { fetchSourceDetail, relearnSource, type Block, type SourceDetail } from '../api'
 import { useDeckStore } from '../stores/deck'
 import { useStatsStore } from '../stores/stats'
@@ -98,7 +98,10 @@ onMounted(() => {
     <template v-else-if="source">
       <h1 class="source-title-lg">{{ source.title }}</h1>
       <p class="text-faint text-sm mt-sm">
-        <span v-if="deckPath">🗂️ {{ deckPath }} · </span>{{ new Date(source.created_at).toLocaleDateString('zh-CN') }}
+        <template v-if="deckPath && source.deck_id">
+          <RouterLink :to="`/articles?deck_id=${source.deck_id}`" class="crumb-link">🗂️ {{ deckPath }}</RouterLink>
+          <span> › 本文 · </span>
+        </template>{{ new Date(source.created_at).toLocaleDateString('zh-CN') }}
       </p>
 
       <!-- 掌握度概览 -->
@@ -144,6 +147,14 @@ onMounted(() => {
 <style scoped>
 .source-back {
   padding-left: 0;
+}
+
+.crumb-link {
+  color: inherit;
+  text-decoration: none;
+}
+.crumb-link:hover {
+  color: var(--color-surface-violet);
 }
 
 .source-title-lg {

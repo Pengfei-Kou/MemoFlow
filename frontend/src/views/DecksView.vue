@@ -1,14 +1,28 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { fetchDecks, createDeck, updateDeck, deleteDeck, type Deck } from '../api'
+import { useRouter } from 'vue-router'
+import { fetchDecks, createDeck, updateDeck, deleteDeck, fetchSources, type Deck, type SourceListItem } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import HubTabs from '../components/HubTabs.vue'
 import { useDeckStore } from '../stores/deck'
 
+const router = useRouter()
 const deckStore = useDeckStore()
 const decks = ref<Deck[]>([])
+const sources = ref<SourceListItem[]>([])
 const loading = ref(false)
 const error = ref('')
+
+/** 该 Deck（含子树）的文章数与卡片数——牌组行的层级线索 */
+function deckCounts(deck: Deck): { articles: number; cards: number } {
+  const ids = new Set(
+    decks.value
+      .filter(d => d.path === deck.path || d.path.startsWith(deck.path + '/'))
+      .map(d => d.id)
+  )
+  const list = sources.value.filter(s => s.deck_id != null && ids.has(s.deck_id))
+  return { articles: list.length, cards: list.reduce((a, s) => a + s.block_count, 0) }
+}
 
 // ── 创建 Deck 表单 ────────────────────────────────────────
 const showCreateForm = ref(false)
@@ -99,6 +113,7 @@ async function load() {
   try {
     decks.value = await fetchDecks()
     await deckStore.loadDecks()
+    sources.value = await fetchSources()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -272,22 +287,25 @@ onMounted(load)
         class="deck-node"
         :style="{ paddingLeft: `calc(var(--space-xl) + ${node.depth * 28}px)` }"
       >
-        <div class="deck-node-content">
+        <div class="deck-node-content deck-node-clickable" @click="router.push(`/articles?deck_id=${node.deck.id}`)">
           <div class="deck-node-info">
             <span class="deck-node-connector" v-if="node.depth > 0">└─</span>
             <span class="deck-node-icon">{{ node.depth === 0 ? '📚' : '📖' }}</span>
             <div>
               <p class="deck-node-name">{{ node.deck.name }}</p>
-              <p class="deck-node-path text-faint text-xs">{{ node.deck.path }}</p>
+              <p class="deck-node-path text-faint text-xs">
+                {{ node.deck.path }} · {{ deckCounts(node.deck).articles }} 篇 {{ deckCounts(node.deck).cards }} 张
+              </p>
             </div>
           </div>
 
           <div class="deck-node-meta">
             <span class="badge deck-strategy-badge">{{ node.deck.parser_config?.strategy ?? '—' }}</span>
             <div class="flex gap-sm">
-              <button class="btn btn-ghost btn-sm" @click="startEdit(node.deck)">编辑</button>
-              <button class="btn btn-ghost btn-sm deck-delete-btn" @click="pendingDelete = node.deck">删除</button>
+              <button class="btn btn-ghost btn-sm" @click.stop="startEdit(node.deck)">编辑</button>
+              <button class="btn btn-ghost btn-sm deck-delete-btn" @click.stop="pendingDelete = node.deck">删除</button>
             </div>
+            <span class="text-faint deck-node-chevron">›</span>
           </div>
         </div>
       </div>
@@ -416,6 +434,17 @@ onMounted(load)
 
 .deck-node-info > div {
   min-width: 0;
+}
+
+.deck-node-clickable {
+  cursor: pointer;
+}
+.deck-node-clickable:hover .deck-node-name {
+  color: var(--color-surface-violet);
+}
+
+.deck-node-chevron {
+  font-size: var(--text-body-lg);
 }
 
 .deck-node-name {

@@ -7,6 +7,7 @@ import DecksView from '../views/DecksView.vue'
 import LoginView from '../views/LoginView.vue'
 import SourceDetailView from '../views/SourceDetailView.vue'
 import SettingsView from '../views/SettingsView.vue'
+import ArticlesView from '../views/ArticlesView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -19,6 +20,7 @@ const router = createRouter({
     { path: '/stats',   name: 'stats',   component: StatsView },
     { path: '/sources/:id', name: 'source-detail', component: SourceDetailView },
     { path: '/settings', name: 'settings', component: SettingsView },
+    { path: '/articles', name: 'articles', component: ArticlesView },
   ],
 })
 

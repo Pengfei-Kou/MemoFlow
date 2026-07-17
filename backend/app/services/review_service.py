@@ -22,6 +22,7 @@ from app.crud import (
     get_deck_by_id, get_deck_source_ids, undo_last_review as crud_undo_last_review,
     count_lapses, get_setting, get_sources_started_today,
     get_new_blocks_article_quota, count_new_within_article_quota,
+    count_source_blocks,
 )
 from app.models import Block, Source
 from app.schemas import (
@@ -222,6 +223,10 @@ def get_next_review(
             deck_name=deck_name,
             review_mode="passage" if new_batch else "card",
             predicted_intervals=_predict_interval_labels(block) if not new_batch else None,
+            source_position=(
+                f"{block.sequence_number}/{count_source_blocks(session, block.source_id)}"
+                if not new_batch else None
+            ),
         )
 
     # 3. 新卡也没了：提前拉今天稍后到期的学习步卡（Anki 的 learn-ahead），
