@@ -148,7 +148,7 @@ function resetUrl() {
           style="min-width: 140px"
         >
           <span v-if="urlImporting" class="spinner" style="width:16px;height:16px"></span>
-          <span v-else>🚀 AI 智能拆解</span>
+          <span v-else>AI 智能拆解</span>
         </button>
       </div>
     </div>

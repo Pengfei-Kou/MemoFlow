@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { fetchReviewHistory, type ReviewHistoryDay } from '../api'
 import { useDeckStore } from '../stores/deck'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
+import AppIcon from '../components/AppIcon.vue'
 import { useStatsStore } from '../stores/stats'
 
 const deckStore = useDeckStore()
@@ -112,9 +113,9 @@ onMounted(load)
 <template>
   <div class="page-container">
     <div class="flex items-center justify-between">
-      <h1 class="page-title">学习统计 📊</h1>
+      <h1 class="page-title">学习统计</h1>
       <DeckScopeSelect />
-      <span class="badge desktop-only" style="font-size: var(--text-caption)">🗂️ {{ currentScopeLabel }}</span>
+      <span class="badge desktop-only" style="font-size: var(--text-caption)"><AppIcon name="folder" :size="12" /> {{ currentScopeLabel }}</span>
     </div>
 
     <div v-if="loading" class="flex items-center gap-md mt-xl">

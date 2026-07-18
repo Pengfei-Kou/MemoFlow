@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { fetchDecks, createDeck, updateDeck, deleteDeck, fetchSources, type Deck, type SourceListItem } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import HubTabs from '../components/HubTabs.vue'
+import AppIcon from '../components/AppIcon.vue'
 import { useDeckStore } from '../stores/deck'
 
 const router = useRouter()
@@ -290,7 +291,7 @@ onMounted(load)
         <div class="deck-node-content deck-node-clickable" @click="router.push(`/articles?deck_id=${node.deck.id}`)">
           <div class="deck-node-info">
             <span class="deck-node-connector" v-if="node.depth > 0">└─</span>
-            <span class="deck-node-icon">{{ node.depth === 0 ? '📚' : '📖' }}</span>
+            <span class="deck-node-icon"><AppIcon name="folder" :size="15" /></span>
             <div>
               <p class="deck-node-name">{{ node.deck.name }}</p>
               <p class="deck-node-path text-faint text-xs">

@@ -21,9 +21,9 @@ function onChange(e: Event) {
     @change="onChange"
     aria-label="复习范围"
   >
-    <option value="">🗂️ 全部 Deck</option>
+    <option value="">全部 Deck</option>
     <option v-for="deck in deckStore.decks" :key="deck.id" :value="deck.id">
-      🗂️ {{ deck.path }}
+      {{ deck.path }}
     </option>
   </select>
 </template>

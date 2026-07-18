@@ -32,7 +32,7 @@ onMounted(async () => {
         :class="{ active: activeTab === 'text' }"
         @click="activeTab = 'text'"
       >
-        📝 粘贴文本
+        粘贴文本
       </button>
       <button
         id="tab-url"
@@ -40,7 +40,7 @@ onMounted(async () => {
         :class="{ active: activeTab === 'url' }"
         @click="activeTab = 'url'"
       >
-        🌐 URL 导入
+        URL 导入
       </button>
       <button
         id="tab-markdown"
@@ -48,7 +48,7 @@ onMounted(async () => {
         :class="{ active: activeTab === 'markdown' }"
         @click="activeTab = 'markdown'"
       >
-        📄 上传 Markdown
+        上传 Markdown
       </button>
     </div>
 

@@ -9,6 +9,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchSources, type SourceListItem } from '../api'
 import { useDeckStore } from '../stores/deck'
 import HubTabs from '../components/HubTabs.vue'
+import AppIcon from '../components/AppIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -74,7 +75,7 @@ onMounted(async () => {
 
     <!-- deck 过滤 chip -->
     <div v-if="filterDeck" class="articles-filter mt-lg">
-      <span class="badge">🗂️ {{ filterDeck.path }}</span>
+      <span class="badge"><AppIcon name="folder" :size="11" /> {{ filterDeck.path }}</span>
       <button class="articles-filter-clear" title="清除过滤" @click="router.replace('/articles')">✕</button>
     </div>
 
@@ -88,7 +89,7 @@ onMounted(async () => {
 
     <template v-else>
       <section v-for="[path, list] in groups" :key="path" class="articles-group mt-xl">
-        <h2 class="articles-group-title text-xs text-faint">🗂️ {{ path }}</h2>
+        <h2 class="articles-group-title text-xs text-faint"><AppIcon name="folder" :size="11" /> {{ path }}</h2>
         <div
           v-for="s in list"
           :key="s.id"

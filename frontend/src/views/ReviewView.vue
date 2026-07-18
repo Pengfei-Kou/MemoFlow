@@ -7,6 +7,7 @@ import {
 import { useDeckStore } from '../stores/deck'
 import { useStatsStore } from '../stores/stats'
 import ReviewCard from '../components/ReviewCard.vue'
+import AppIcon from '../components/AppIcon.vue'
 import DeckScopeSelect from '../components/DeckScopeSelect.vue'
 import EditCardModal from '../components/EditCardModal.vue'
 
@@ -404,25 +405,25 @@ onUnmounted(() => {
       <!-- 信息区：第一行 = 卡片身份，第二行 = 范围 + 进度 -->
       <div class="review-meta">
         <div class="review-meta-main">
-          <span class="badge badge-truncate" :title="cardLabel">📖 {{ cardLabel }}</span>
+          <span class="badge badge-truncate" :title="cardLabel"><AppIcon name="book" :size="12" /> {{ cardLabel }}</span>
           <span v-if="isNew" class="badge badge-new">新卡片</span>
           <button
             class="review-autospeak-btn"
             :class="{ on: autoSpeak }"
             @click="toggleAutoSpeak"
             :title="autoSpeak ? '翻面自动朗读：开' : '翻面自动朗读：关'"
-          >🔊 {{ autoSpeak ? '自动' : '手动' }}</button>
+          ><AppIcon name="speaker" :size="11" /> {{ autoSpeak ? '自动' : '手动' }}</button>
         </div>
         <div class="review-meta-sub">
-          <span class="review-deck-scope text-xs desktop-only">🗂️ {{ currentDeckLabel }}</span>
-          <span v-if="isNew && sourcePosition" class="text-faint text-xs">📄 本篇 {{ sourcePosition }}</span>
+          <span class="review-deck-scope text-xs desktop-only"><AppIcon name="folder" :size="11" /> {{ currentDeckLabel }}</span>
+          <span v-if="isNew && sourcePosition" class="text-faint text-xs"><AppIcon name="doc" :size="11" /> 本篇 {{ sourcePosition }}</span>
           <span class="text-faint text-xs review-progress-label">{{ progressLabel }}</span>
         </div>
       </div>
 
       <!-- 文章切换提示 -->
       <div v-if="articleSwitched" class="article-switch-banner mt-lg">
-        📄 上一篇已读完 · 开始新文章<template v-if="sourceTitle">《{{ sourceTitle }}》</template>
+        <AppIcon name="doc" :size="12" /> 上一篇已读完 · 开始新文章<template v-if="sourceTitle">《{{ sourceTitle }}》</template>
       </div>
 
       <!-- Card component -->

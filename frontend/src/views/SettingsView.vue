@@ -52,7 +52,7 @@ onMounted(() => {
 
 <template>
   <div class="page-container">
-    <h1 class="page-title">设置 ⚙️</h1>
+    <h1 class="page-title">设置</h1>
 
     <div v-if="reviewSettings" class="card settings-card mt-xl">
       <h2 class="settings-section-title">复习</h2>

@@ -10,6 +10,7 @@ import { useDeckStore } from '../stores/deck'
 import { useStatsStore } from '../stores/stats'
 import EditCardModal from '../components/EditCardModal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import AppIcon from '../components/AppIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -99,7 +100,7 @@ onMounted(() => {
       <h1 class="source-title-lg">{{ source.title }}</h1>
       <p class="text-faint text-sm mt-sm">
         <template v-if="deckPath && source.deck_id">
-          <RouterLink :to="`/articles?deck_id=${source.deck_id}`" class="crumb-link">🗂️ {{ deckPath }}</RouterLink>
+          <RouterLink :to="`/articles?deck_id=${source.deck_id}`" class="crumb-link"><AppIcon name="folder" :size="12" /> {{ deckPath }}</RouterLink>
           <span> › 本文 · </span>
         </template>{{ new Date(source.created_at).toLocaleDateString('zh-CN') }}
       </p>
@@ -119,7 +120,7 @@ onMounted(() => {
           class="btn btn-ghost text-sm"
           :disabled="relearning || learned === 0"
           @click="confirmMsg = `确定整篇重学《${source.title}》？将清空 ${blocks.length} 张卡的复习进度（历史记录保留）`"
-        >🔄 重学这篇</button>
+        ><AppIcon name="refresh" :size="12" /> 重学这篇</button>
         <span v-if="toast" class="text-xs" style="color: var(--color-surface-violet)">{{ toast }}</span>
       </div>
 
@@ -133,7 +134,7 @@ onMounted(() => {
           </div>
           <div class="source-block-side">
             <span class="source-block-status text-xs" :class="statusLabel(b).cls">{{ statusLabel(b).text }}</span>
-            <button class="btn-speak" title="编辑" @click="editingBlock = b">✏️</button>
+            <button class="btn-speak" title="编辑" @click="editingBlock = b"><AppIcon name="pencil" :size="13" /></button>
           </div>
         </div>
       </div>

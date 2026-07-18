@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { fetchBlockContext, type Block, type BlockContextItem } from '../api'
+import AppIcon from './AppIcon.vue'
 
 const props = defineProps<{
   card: Block
@@ -106,7 +107,7 @@ async function toggleContext() {
     <!-- Undo Button (passage mode) -->
     <div v-if="showUndo" class="review-undo-container flex items-center">
       <button class="btn btn-ghost text-xs review-undo-btn" @click.stop="emit('undo')" title="快捷键: Backspace">
-        ⬅️ 上一句
+        <AppIcon name="arrow-left" :size="12" /> 上一句
       </button>
       <span class="text-faint text-xs ml-sm">
         (上一句: {{ lastRatingLabel }})
@@ -136,8 +137,8 @@ async function toggleContext() {
         <p class="review-card-label text-xs text-faint">答案</p>
         <div class="review-answer-row">
           <p class="review-answer">{{ card.content }}</p>
-          <button class="btn-speak" @click.stop="speak(card.content)" title="朗读句子">🔊</button>
-          <button class="btn-speak" @click.stop="emit('edit')" title="编辑卡片">✏️</button>
+          <button class="btn-speak" @click.stop="speak(card.content)" title="朗读句子"><AppIcon name="speaker" /></button>
+          <button class="btn-speak" @click.stop="emit('edit')" title="编辑卡片"><AppIcon name="pencil" /></button>
         </div>
 
         <!-- 上下文回溯 -->
@@ -157,7 +158,7 @@ async function toggleContext() {
           <ul class="review-notes-list">
             <li v-for="(note, idx) in card.notes" :key="idx" class="review-note-item">
               <span class="note-zh">{{ note.zh }}</span>
-              <span class="note-en-row"><span class="note-en-mask" :class="{ revealed: revealedNotes.has(idx) }" @click="toggleNote(idx)">{{ note.en }}</span><button class="btn-speak btn-speak-sm" @click.stop="speak(note.en)" title="朗读">🔊</button></span>
+              <span class="note-en-row"><span class="note-en-mask" :class="{ revealed: revealedNotes.has(idx) }" @click="toggleNote(idx)">{{ note.en }}</span><button class="btn-speak btn-speak-sm" @click.stop="speak(note.en)" title="朗读"><AppIcon name="speaker" :size="12" /></button></span>
             </li>
           </ul>
         </div>

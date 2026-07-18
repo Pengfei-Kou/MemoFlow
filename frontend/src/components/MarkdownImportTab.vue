@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppIcon from './AppIcon.vue'
 import { importMarkdownFile, type MarkdownImportResponse } from '../api'
 import { useDeckStore } from '../stores/deck'
 import DeckSelector from './DeckSelector.vue'
@@ -83,12 +84,12 @@ function resetMarkdown() {
           @change="onFileChange"
         />
         <div v-if="!mdFile" class="drop-zone-hint">
-          <span style="font-size: 36px">📄</span>
+          <AppIcon name="doc" :size="36" />
           <p class="mt-lg text-mute">拖拽 .md 文件到此处，或点击选择</p>
           <p class="text-xs text-faint mt-sm">支持「郝炟英语口语」格式（中文句 + 英文翻译）</p>
         </div>
         <div v-else class="drop-zone-file">
-          <span style="font-size: 28px">📄</span>
+          <AppIcon name="doc" :size="28" />
           <div>
             <p class="file-name">{{ mdFile.name }}</p>
             <p class="text-faint text-xs">{{ (mdFile.size / 1024).toFixed(1) }} KB · 点击重新选择</p>

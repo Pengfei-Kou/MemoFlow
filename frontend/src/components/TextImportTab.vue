@@ -87,7 +87,7 @@ function reset() {
       <p class="text-faint text-sm">AI 拆解后先预览确认，再入库</p>
       <button id="import-submit" class="btn btn-primary" :disabled="loading || text.trim().length < 10" @click="handlePreview" style="min-width: 140px;">
         <span v-if="loading" class="spinner" style="width:16px; height:16px;"></span>
-        <span v-else>🚀 AI 智能拆解</span>
+        <span v-else>AI 智能拆解</span>
       </button>
     </div>
   </div>
